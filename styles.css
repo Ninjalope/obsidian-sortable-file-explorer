@@ -1,0 +1,408 @@
+/* Reset */
+.nav-folder,
+.nav-file {
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: none;
+    font: inherit;
+}
+
+/* File explorer container - IMPORTANT: position relative for drop indicators */
+.file-explorer-container {
+    position: relative !important;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.file-explorer-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+}
+
+.file-explorer-scroll {
+    overflow: auto;
+    padding: 6px 0;
+    flex: 1 1 auto;
+}
+
+.file-explorer-btn {
+    width: 26px;
+    height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    color: var(--icon-color);
+}
+
+.file-explorer-btn:hover {
+    background: var(--background-modifier-hover);
+    color: var(--icon-color-focused);
+}
+
+/* Indentation and structure */
+.nav-folder {
+    margin: 0;
+    padding: 0;
+}
+
+/* Remove the border and indentation from nav-folder-children since we're handling it in JS */
+.nav-folder-children {
+    margin: 0;
+    padding: 0;
+    position: relative;
+}
+
+.nav-folder-title {
+    display: flex;
+    align-items: center;
+    height: 24px;
+    /* padding-left is set dynamically in JS based on depth */
+    padding-right: 8px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+    margin: 1px 0;
+    cursor: pointer;
+    user-select: none;
+    border-radius: 4px;
+    font-size: var(--font-ui-small);
+    font-weight: 500;
+    color: var(--nav-item-color);
+    background: none;
+    transition: background 0.1s;
+    position: relative;
+    line-height: 1.2;
+}
+
+.nav-folder-title:hover,
+.nav-folder-title.is-active {
+    background-color: var(--nav-item-background-hover);
+    color: var(--nav-item-color-active);
+}
+
+.nav-folder-title.is-active {
+    background-color: var(--nav-item-background-active);
+}
+
+.nav-folder-collapse-indicator {
+    width: 12px;
+    height: 12px;
+    margin-right: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.15s;
+    color: var(--nav-collapse-icon-color);
+    flex-shrink: 0;
+}
+
+.nav-folder-collapse-indicator.is-collapsed {
+    transform: rotate(-90deg);
+}
+
+.nav-folder-icon {
+    width: 12px;
+    height: 12px;
+    margin-right: 4px;
+    display: flex;
+    align-items: center;
+    color: var(--nav-folder-icon-color, var(--nav-item-color));
+    flex-shrink: 0;
+}
+
+.nav-folder-title-content {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1 1 auto;
+    font-weight: 500;
+    min-width: 0;
+}
+
+.nav-folder-children.is-collapsed {
+    display: none;
+}
+
+/* File styles */
+.nav-file {
+    margin: 0;
+    padding: 0;
+}
+
+.nav-file-title {
+    display: flex;
+    align-items: center;
+    height: 24px;
+    /* padding-left is set dynamically in JS based on depth */
+    padding-right: 8px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+    margin: 1px 0;
+    border-radius: 4px;
+    cursor: pointer;
+    user-select: none;
+    font-size: var(--font-ui-small);
+    color: var(--nav-item-color);
+    background: none;
+    transition: background 0.1s;
+    position: relative;
+    line-height: 1.2;
+}
+
+.nav-file-title:hover,
+.nav-file-title.is-active {
+    background-color: var(--nav-item-background-hover);
+    color: var(--nav-item-color-active);
+}
+
+.nav-file-title.is-active {
+    background-color: var(--nav-item-background-active);
+}
+
+/* Multi-select highlight */
+/* Outline when mode is 'focused' (selected in explorer) */
+.file-explorer-container.outline-mode-focused .nav-file-title.is-selected,
+.file-explorer-container.outline-mode-focused .nav-folder-title.is-selected {
+    outline: 2px solid var(--sfe-outline-color, var(--interactive-accent));
+    outline-offset: -2px;
+    background-color: var(--nav-item-background-hover);
+}
+
+/* Outline when mode is 'viewed' (currently opened note) */
+.file-explorer-container.outline-mode-viewed .nav-file-title.is-active {
+    outline: 2px solid var(--sfe-outline-color, var(--interactive-accent));
+    outline-offset: -2px;
+}
+
+/* When in viewed mode, distinguish explorer focus with a soft accent-tinted background (vanilla-like) */
+.file-explorer-container.outline-mode-viewed .nav-file-title.is-selected,
+.file-explorer-container.outline-mode-viewed .nav-folder-title.is-selected {
+    outline: none;
+    background-color: var(--sfe-accent-fill, var(--nav-item-background-hover));
+}
+
+.nav-file-icon {
+    width: 12px;
+    height: 12px;
+    margin-right: 4px;
+    display: flex;
+    align-items: center;
+    color: var(--nav-file-icon-color, var(--nav-item-color));
+    flex-shrink: 0;
+}
+
+.nav-file-title-content {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+/* Inline extension badges (e.g., BASE) */
+.file-badge {
+    display: none; /* default hidden; enabled via container state */
+    align-items: center;
+    justify-content: center;
+    height: 16px;
+    padding: 0 6px;
+    border-radius: 6px;
+    margin-left: 6px;
+    font-size: 10px;
+    line-height: 1;
+    letter-spacing: 0.06em;
+    font-weight: 700;
+    text-transform: uppercase;
+    background: var(--background-modifier-border);
+    color: var(--text-muted);
+    flex: 0 0 auto;
+}
+
+/* Only show badges when icons are turned off (parity with core explorer) */
+.file-explorer-container.show-base-badge .file-badge-base {
+    display: inline-flex;
+}
+
+/* Hide badges while inline rename is active to avoid crowding */
+.nav-file-title[data-renaming="true"] .file-badge {
+    display: none !important;
+}
+
+/* Inline rename input */
+.nav-item-rename {
+    background: var(--background-modifier-form-field);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    padding: 0 4px;
+    font-size: var(--font-ui-small);
+    color: var(--text-normal);
+    outline: none;
+    flex: 1;
+    margin-right: 4px;
+}
+
+.nav-item-rename:focus {
+    border-color: var(--interactive-accent);
+    box-shadow: 0 0 0 2px var(--interactive-accent-hover);
+}
+
+/* Drag and drop feedback */
+.is-dragging {
+    opacity: 0.5;
+}
+
+/* Folder drop target highlighting */
+.is-drag-over-folder {
+    background-color: var(--background-modifier-hover) !important;
+    outline: 2px dashed var(--interactive-accent) !important;
+    outline-offset: -2px;
+    border-radius: 4px;
+}
+
+/* Parent folder drop zone highlighting */
+.parent-folder-drop-zone {
+    background-color: var(--background-modifier-hover-mild) !important;
+    outline: 2px dashed var(--interactive-accent) !important;
+    outline-offset: -2px;
+}
+
+.parent-folder-drop-target {
+    background-color: var(--interactive-accent-hover) !important;
+    outline: 2px solid var(--interactive-accent) !important;
+    outline-offset: -2px;
+    border-radius: 4px;
+}
+
+.parent-folder-indicator {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding: 4px 8px;
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    font-size: var(--font-ui-small);
+    font-weight: 500;
+    z-index: 9999;
+    pointer-events: none;
+}
+
+/* Drop indicator line styles - High specificity and visibility */
+.file-explorer-drop-indicator {
+    position: absolute !important;
+    height: 2px !important;
+    background: var(--interactive-accent) !important;
+    pointer-events: none !important;
+    z-index: 9999 !important;
+    opacity: 1 !important;
+}
+
+/* Alternative drop indicator with pseudo-elements for better visibility */
+.file-explorer-drop-indicator::before,
+.file-explorer-drop-indicator::after {
+    content: '';
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    background: var(--interactive-accent);
+    border-radius: 50%;
+    top: -2px;
+}
+
+.file-explorer-drop-indicator::before {
+    left: 0;
+}
+
+.file-explorer-drop-indicator::after {
+    right: 0;
+}
+
+/* Action button (header) */
+.nav-action-button {
+    padding: 0 8px;
+    cursor: pointer;
+    background: none;
+    border: none;
+    color: var(--nav-item-color);
+    border-radius: 4px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.nav-action-button:hover {
+    color: var(--nav-item-color-hover);
+    background: var(--nav-item-background-hover);
+}
+
+.custom-explorer-icon {
+    display: block;
+    width: 16px;
+    height: 16px;
+}
+
+/* Make Delete actions clearly red (text + icon) */
+/* Support multiple Obsidian variants for destructive items */
+.menu .menu-item.mod-warning,
+.menu .menu-item.is-warning,
+.menu .menu-item.mod-danger,
+.menu .menu-item.is-danger,
+/* Also match by icon when warning class is missing (requires :has support) */
+.menu .menu-item:has(.menu-item-icon .lucide-trash-2) {
+    --_danger-color: var(--text-error, var(--color-red, #e03131));
+    color: var(--_danger-color) !important;
+}
+
+.menu .menu-item.mod-warning .menu-item-title,
+.menu .menu-item.is-warning .menu-item-title,
+.menu .menu-item.mod-danger .menu-item-title,
+.menu .menu-item.is-danger .menu-item-title,
+.menu .menu-item:has(.menu-item-icon .lucide-trash-2) .menu-item-title {
+    color: var(--_danger-color, var(--text-error, var(--color-red, #e03131))) !important;
+}
+
+.menu .menu-item.mod-warning .menu-item-icon,
+.menu .menu-item.is-warning .menu-item-icon,
+.menu .menu-item.mod-danger .menu-item-icon,
+.menu .menu-item.is-danger .menu-item-icon,
+.menu .menu-item:has(.menu-item-icon .lucide-trash-2) .menu-item-icon {
+    color: var(--_danger-color, var(--text-error, var(--color-red, #e03131))) !important;
+}
+
+/* Ensure icon SVGs inherit the red color */
+.menu .menu-item.mod-warning .menu-item-icon svg,
+.menu .menu-item.is-warning .menu-item-icon svg,
+.menu .menu-item.mod-danger .menu-item-icon svg,
+.menu .menu-item.is-danger .menu-item-icon svg,
+.menu .menu-item:has(.menu-item-icon .lucide-trash-2) .menu-item-icon svg {
+    color: inherit !important;
+    stroke: currentColor !important;
+}
+
+/* Preserve red on hover/active */
+.menu .menu-item.mod-warning:hover,
+.menu .menu-item.is-warning:hover,
+.menu .menu-item.mod-danger:hover,
+.menu .menu-item.is-danger:hover,
+.menu .menu-item:has(.menu-item-icon .lucide-trash-2):hover,
+.menu .menu-item.mod-warning.is-active,
+.menu .menu-item.is-warning.is-active,
+.menu .menu-item.mod-danger.is-active,
+.menu .menu-item.is-danger.is-active,
+.menu .menu-item:has(.menu-item-icon .lucide-trash-2).is-active {
+    color: var(--_danger-color, var(--text-error, var(--color-red, #e03131))) !important;
+}
+
+/* Optional: hide file/folder icons according to setting on container */
+.file-explorer-container.hide-icons .nav-file-icon,
+.file-explorer-container.hide-icons .nav-folder-icon {
+    display: none !important;
+}

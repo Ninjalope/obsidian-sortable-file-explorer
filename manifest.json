@@ -1,0 +1,11 @@
+{
+    "id": "sortable-file-explorer",
+    "name": "Sortable File Explorer",
+    "version": "1.0.0",
+    "minAppVersion": "1.9.0",
+    "description": "Alternative file explorer with custom sorting and improved drag & drop",
+    "author": "Ninjalope",
+    "authorUrl": "https://github.com/ninjalope",
+    "fundingUrl": "https://ko-fi.com/ninjalope",
+    "isDesktopOnly": false
+}

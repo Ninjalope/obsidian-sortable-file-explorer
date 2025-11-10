@@ -485,6 +485,31 @@ class CustomSortableFileExplorerView extends ItemView {
         await this.onOpen();
     }
 
+    ensureFolderExpanded(folderPath, domRefs = {}) {
+        if (!folderPath) return;
+        const { titleEl = null, childrenEl = null, collapseEl = null } = domRefs;
+        let changed = false;
+        if (this.collapsedFolders && this.collapsedFolders[folderPath]) {
+            delete this.collapsedFolders[folderPath];
+            changed = true;
+        }
+        this.plugin.settings.collapsedFolders = this.collapsedFolders;
+        if (changed) this.saveSettingsDebounced();
+
+        const resolvedTitle = titleEl ?? this.contentEl?.querySelector(`.nav-folder-title[data-path="${CSS.escape(folderPath)}"]`);
+        const resolvedChildren = childrenEl ?? resolvedTitle?.nextElementSibling;
+        const resolvedCollapse = collapseEl ?? resolvedTitle?.querySelector('.nav-folder-collapse-indicator');
+
+        if (resolvedChildren) {
+            if (typeof resolvedChildren.removeClass === 'function') resolvedChildren.removeClass('is-collapsed');
+            else resolvedChildren.classList?.remove('is-collapsed');
+        }
+        if (resolvedCollapse) {
+            if (typeof resolvedCollapse.removeClass === 'function') resolvedCollapse.removeClass('is-collapsed');
+            else resolvedCollapse.classList?.remove('is-collapsed');
+        }
+    }
+
     async buildFileExplorer(container) {
         container.empty();
         // Reset render index for consistent ordering each rebuild
@@ -1350,9 +1375,12 @@ class CustomSortableFileExplorerView extends ItemView {
 
             if (!childrenContainer) return;
 
-            if (childrenContainer.hasClass('is-collapsed')) {
-                parentEl.click();
-            }
+            const collapseIcon = parentEl?.querySelector('.nav-folder-collapse-indicator') || null;
+            this.ensureFolderExpanded(parentFolder.path, {
+                titleEl: parentEl,
+                childrenEl: childrenContainer,
+                collapseEl: collapseIcon,
+            });
         }
 
         const tempFolderEl = childrenContainer.createDiv({ cls: 'nav-folder' });
@@ -1377,6 +1405,7 @@ class CustomSortableFileExplorerView extends ItemView {
             if (commit && newName) {
                 const newFolderPath = parentFolder.isRoot() ? newName : `${parentFolder.path}/${newName}`;
                 await this.app.vault.createFolder(newFolderPath);
+                if (!parentFolder.isRoot()) this.ensureFolderExpanded(parentFolder.path);
             }
         };
 

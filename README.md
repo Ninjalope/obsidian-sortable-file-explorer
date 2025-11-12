@@ -1,10 +1,6 @@
 # Sortable File Explorer
 
-An enhanced file explorer for Obsidian with drag & drop reordering, multi-select capabilities, and improved navigation features.
-
-## Description
-
-Sortable File Explorer replaces Obsidian's default file explorer with a powerful and interactive file explorer. It provides advanced file management capabilities including custom sorting, multi-select operations, and smooth drag & drop functionality while maintaining a clean, familiar interface.
+An alternative file explorer for Obsidian with drag & drop reordering for custom sorting, multi-select capabilities, and full navigation features.
 
 ## Features
 
@@ -63,13 +59,13 @@ Sortable File Explorer replaces Obsidian's default file explorer with a powerful
 ## Compatibility
 
 - **Obsidian Version**: Requires Obsidian 1.9.0 or newer because this is what I tested with. It may work on past verions.
-- **Plugin Compatibility**: Designed to incorporate the functionality of other plugins which add things to the context menu; however, there are certainly some plugins out there which don't work. 
+- **Plugin Compatibility**: Designed to incorporate the functionality of other plugins which add things to the file explorer's context menu; however, there are certainly some plugins out there which don't work. 
 
 ### Mobile support (iOS/Android)
 
 - The plugin loads on mobile and preserves/reflects your custom sort order created on desktop.
 - Drag-and-drop reordering and some desktop-oriented actions (right-click context menus, certain keyboard shortcuts) are not available on mobile due to long‑press/touch limitations.
-- You can still navigate, open, and rename items via Obsidian’s core mobile actions. For reordering, use the desktop app; changes will sync and display correctly on mobile.
+- You can still navigate, open, and rename items via Obsidian’s core mobile actions. For reordering, use the desktop app; changes will display correctly on mobile.
 
 ## Settings and Customization
 

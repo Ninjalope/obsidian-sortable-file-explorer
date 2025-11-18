@@ -12,6 +12,14 @@ class CustomSortableFileExplorerView extends ItemView {
     this.handleActiveLeafChange = this.handleActiveLeafChange.bind(this);
     this.handleFileOpen = this.handleFileOpen.bind(this);
         this.debouncedRefresh = debounce(this.onOpen.bind(this), 300, false);
+        // Centralized refresh gate to optionally coalesce or skip a refresh
+        this._suppressNextRefresh = false;
+        this.requestRefresh = (source = 'unknown') => {
+            try {
+                if (this._suppressNextRefresh) { this._suppressNextRefresh = false; return; }
+                this.debouncedRefresh();
+            } catch (_) { this.debouncedRefresh(); }
+        };
         // Debounced settings saver to avoid excessive disk writes during rapid UI interactions
         this.saveSettingsDebounced = debounce(() => {
             try { this.plugin.saveData(this.plugin.settings); } catch (_) {}
@@ -164,10 +172,8 @@ class CustomSortableFileExplorerView extends ItemView {
         const prevScrollTop = this.explorerEl?.scrollTop ?? this._pendingScrollTop ?? 0;
         this._pendingScrollTop = prevScrollTop;
 
-        this.contentEl.empty();
-        // Reset detached references so elements are recreated and attached
-        this.toolbarEl = null;
-    this.contentEl.addClass('file-explorer-container');
+        // Avoid clearing the entire container to reduce blink; keep toolbar and swap explorer offscreen
+        this.contentEl.addClass('file-explorer-container');
         this.contentEl.style.position = 'relative';
         // Respect icon visibility preference
         if (this.plugin?.settings?.showIcons === false) this.contentEl.addClass('hide-icons');
@@ -212,11 +218,10 @@ class CustomSortableFileExplorerView extends ItemView {
             this._focusMousedownBound = true;
         }
 
-        // Build toolbar + explorer containers
+        // Build toolbar (reuse if exists) and prepare a hidden new explorer to swap in
         this.renderToolbar();
-        // Always recreate the explorer container after emptying contentEl
-        // to avoid holding a detached element reference.
-    this.explorerEl = this.contentEl.createDiv({ cls: 'file-explorer-scroll' });
+        const newExplorer = this.contentEl.createDiv({ cls: 'file-explorer-scroll' });
+        try { newExplorer.style.visibility = 'hidden'; } catch (_) {}
 
         await this.cleanupDeletedPaths();
         this.collapsedFolders = this.plugin.settings.collapsedFolders || {};
@@ -224,7 +229,14 @@ class CustomSortableFileExplorerView extends ItemView {
         let activeFile = this.app.workspace.getActiveFile();
         this.activeFilePath = activeFile ? activeFile.path : null;
 
-    this.buildFileExplorer(this.explorerEl);
+        // Build offscreen to avoid visual blink, then swap in
+        this.buildFileExplorer(newExplorer);
+        const oldExplorer = this.explorerEl && this.explorerEl.isConnected ? this.explorerEl : null;
+        try { newExplorer.style.visibility = ''; } catch (_) {}
+        if (oldExplorer && oldExplorer !== newExplorer) {
+            try { oldExplorer.remove(); } catch (_) {}
+        }
+        this.explorerEl = newExplorer;
         this.updateActiveFileHighlight();
 
         // Restore previous scroll position after the DOM is laid out
@@ -248,9 +260,9 @@ class CustomSortableFileExplorerView extends ItemView {
             this.registerEvent(
                 this.app.workspace.on('file-open', this.handleFileOpen)
             );
-            this.registerEvent(this.app.vault.on('create', () => this.debouncedRefresh()));
-            this.registerEvent(this.app.vault.on('delete', () => this.debouncedRefresh()));
-            this.registerEvent(this.app.vault.on('rename', () => this.debouncedRefresh()));
+            this.registerEvent(this.app.vault.on('create', () => this.requestRefresh('create')));
+            this.registerEvent(this.app.vault.on('delete', () => this.requestRefresh('delete')));
+            this.registerEvent(this.app.vault.on('rename', () => this.requestRefresh('rename')));
             this.eventsBound = true;
         }
 
@@ -396,10 +408,14 @@ class CustomSortableFileExplorerView extends ItemView {
     }
 
     // Try multiple times to select the inline title (preferred) or the first content line
-    async ensureTitleLineSelected(leaf, file, tries = 10, delayMs = 80) {
+    async ensureTitleLineSelected(leaf, file, tries = 5, delayMs = 80) {
         const editor = await this.waitForEditorOnLeaf(leaf);
         if (!editor) return;
         const view = leaf?.view;
+        // Stop any reselection as soon as the user starts typing
+        let userInteracted = false;
+        const keydownHandler = () => { userInteracted = true; };
+        try { view?.containerEl?.addEventListener('keydown', keydownHandler, { once: true, capture: true }); } catch (_) {}
         // Track last known text snapshot to detect changes during initial file creation
         let lastLineCount = editor.lineCount ? editor.lineCount() : (editor.lastLine ? editor.lastLine() + 1 : 0);
         const selectInlineTitle = () => this.trySelectInlineTitle(view);
@@ -410,18 +426,21 @@ class CustomSortableFileExplorerView extends ItemView {
             try { editor.focus(); } catch (_) {}
         };
         const selectNow = () => {
+            if (userInteracted) return;
             // Prefer selecting the inline title if visible/enabled; fallback to editor selection
             if (!selectInlineTitle()) selectEditorTitleLine();
         };
         selectNow();
         
-        // Re-apply a few times on a timer regardless of line count, to beat slow injectors
+        // Re-apply briefly only when content changes and user hasn't typed
         for (let i = 0; i < tries; i++) {
             await new Promise(r => setTimeout(r, delayMs));
+            if (userInteracted) break;
             const lc = editor.lineCount ? editor.lineCount() : (editor.lastLine ? editor.lastLine() + 1 : 0);
-            if (lc !== lastLineCount) lastLineCount = lc;
-            // Re-apply either way to win focus races
-            selectNow();
+            if (lc !== lastLineCount) {
+                lastLineCount = lc;
+                selectNow();
+            }
         }
 
         // Also listen briefly for file modify events (e.g., Templates plugin saving content)
@@ -431,9 +450,10 @@ class CustomSortableFileExplorerView extends ItemView {
             const ref = this.app.vault.on('modify', (f) => {
                 try {
                     if (!active) return;
+                    if (userInteracted) return;
                     if (f && file && f.path === file.path) {
                         modifiesHandled++;
-                        selectNow();
+                        if (modifiesHandled <= 2) selectNow();
                     }
                 } catch (_) {}
             });
@@ -445,6 +465,8 @@ class CustomSortableFileExplorerView extends ItemView {
             // Ensure lifecycle cleanup as a fallback
             try { this.registerEvent(ref); } catch (_) {}
         } catch (_) {}
+        // Clean once done
+        try { view?.containerEl?.removeEventListener('keydown', keydownHandler, { capture: true }); } catch (_) {}
     }
 
     // Attempt to select the inline title (if enabled). Returns true if selection applied.
@@ -1344,12 +1366,14 @@ class CustomSortableFileExplorerView extends ItemView {
             if (itemEl.dataset.prevDraggable !== '') itemEl.setAttribute('draggable', itemEl.dataset.prevDraggable);
             else itemEl.removeAttribute('draggable');
             delete itemEl.dataset.prevDraggable;
-            itemEl.removeAttribute('data-renaming');
 
             if (commit && newName && newName !== item.name) {
                 const parentPath = item.parent.path === '/' ? '' : item.parent.path;
                 await this.app.fileManager.renameFile(item, `${parentPath}/${newName}`);
             }
+            
+            // Remove renaming flag AFTER rename completes to prevent click events from toggling collapse state
+            itemEl.removeAttribute('data-renaming');
         };
 
     input.addEventListener('blur', () => finishEdit(true));

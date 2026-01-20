@@ -25,7 +25,7 @@ An alternative file explorer for Obsidian with drag & drop reordering for custom
 
 ## Installation
 
-### From Community Plugins (Recommended)
+### From Community Plugins (Coming after approval by Obsidian)
 1. Open Obsidian Settings → Community plugins
 2. Browse community plugins and search for "Sortable File Explorer"
 3. Install and enable the plugin

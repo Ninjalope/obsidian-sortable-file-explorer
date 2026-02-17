@@ -1,7 +1,7 @@
 {
     "id": "sortable-file-explorer",
     "name": "Sortable File Explorer",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "minAppVersion": "1.9.0",
     "description": "Alternative file explorer with custom sorting and drag & drop.",
     "author": "Ninjalope",

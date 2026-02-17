@@ -39,7 +39,7 @@ class CustomSortableFileExplorerView extends ItemView {
         this._navKeysBound = false;
     }
 
-    // Pragmatic fallback: try to mirror selection into core file explorer DOM and run native move
+    // fallback: try to mirror selection into core file explorer DOM and run native move
     openNativeMoveDialogForSelection() {
         const leaves = this.app.workspace.getLeavesOfType('file-explorer');
         const fileExplorerLeaf = leaves && leaves.length ? leaves[0] : null;
@@ -2809,7 +2809,6 @@ class CustomSortableFileExplorerSettingTab extends PluginSettingTab {
     display() {
         const { containerEl } = this;
         containerEl.empty();
-        containerEl.createEl('h2', { text: 'Sortable File Explorer Settings' });
 
         new Setting(containerEl)
             .setName('Hide file extensions')

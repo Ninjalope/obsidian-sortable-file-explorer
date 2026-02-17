@@ -2,6 +2,23 @@
 
 An alternative file explorer for Obsidian with drag & drop reordering for custom sorting, multi-select capabilities, and full navigation features.
 
+## How's Sortable File Explorer different?
+
+- **Separate from the default File Explorer**: This plugin is a completely separate file explorer from Obsidian's built in option. Runs as its own view, so you keep full access to Obsidian’s native explorer instead of replacing or modifying it.
+- **Clearer visual hierarchy**: Larger outline-style spacing and icons for easier differentiation, especially in large or deeply nested vaults.
+- **Persists state**: Remembers both custom sort order and folder collapse state.
+- **Sync-friendly persistence**: Order/collapse state stored in the plugin’s `data.json` so it can carry across machines when synced.
+- **Manual custom ordering**: Drag & drop reordering for files and folders.
+- **Multi-selection**: Range select with Shift; toggle selection with Ctrl/Cmd.
+- **Batch operations**: Move, duplicate, and delete multiple items at once.
+- **Inline rename**: Rename files and folders directly in the explorer.
+- **File Extensions**: Show or hide file extensions with a simple toggle setting.
+- **External file import**: Drag files from Finder/Explorer into the vault and open them right from Sortable File Explorer.
+- **Smart drop zones + accurate highlighting**: Distinguishes between dropping into folders vs. reordering between items.
+- **Keyboard-friendly**: Navigation and shortcuts aligned with common file manager conventions.
+- **Mobile stance**: Mobile reflects desktop-defined ordering even though drag-and-drop is primarily desktop-oriented.
+- **Context-menu compatibility**: Designed to work alongside other plugins that add file-explorer context menu items.
+
 ## Features
 
 ### Core Functionality
@@ -36,6 +53,8 @@ An alternative file explorer for Obsidian with drag & drop reordering for custom
 2. Extract to `[your vault]/.obsidian/plugins/sortable-file-explorer/`
 3. Restart Obsidian or reload community plugins
 4. Enable "Sortable File Explorer" in Settings → Community plugins
+
+
 
 ## Usage
 

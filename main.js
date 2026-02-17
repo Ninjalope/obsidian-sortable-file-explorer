@@ -39,6 +39,16 @@ class CustomSortableFileExplorerView extends ItemView {
         this._navKeysBound = false;
     }
 
+    // Tag the Obsidian Menu DOM so plugin CSS can target only menus created by this view
+    tagMenuForStyling(menu) {
+        try {
+            const el = menu?.dom ?? menu?.containerEl ?? menu?.menuEl ?? menu?.el ?? null;
+            if (!el) return;
+            if (typeof el.addClass === 'function') el.addClass('sfe-menu');
+            else el.classList?.add('sfe-menu');
+        } catch (_) {}
+    }
+
     // fallback: try to mirror selection into core file explorer DOM and run native move
     openNativeMoveDialogForSelection() {
         const leaves = this.app.workspace.getLeavesOfType('file-explorer');
@@ -76,17 +86,17 @@ class CustomSortableFileExplorerView extends ItemView {
     // Utility: return array of visible item elements in current order
     getVisibleItemElements() {
         if (!this.contentEl) return [];
-        return Array.from(this.contentEl.querySelectorAll('.nav-folder-title, .nav-file-title'));
+        return Array.from(this.contentEl.querySelectorAll('.sfe-folder-title, .sfe-file-title'));
     }
 
     // Utility: sync selected CSS
     updateSelectionStyles() {
         if (!this.contentEl) return;
-        this.contentEl.querySelectorAll('.nav-folder-title.is-selected, .nav-file-title.is-selected')
-            .forEach(el => el.classList.remove('is-selected'));
+        this.contentEl.querySelectorAll('.sfe-folder-title.sfe-is-selected, .sfe-file-title.sfe-is-selected')
+            .forEach(el => el.classList.remove('sfe-is-selected'));
         for (const path of this.selectedPaths) {
             const el = this.contentEl.querySelector(`[data-path="${CSS.escape(path)}"]`);
-            if (el) el.classList.add('is-selected');
+            if (el) el.classList.add('sfe-is-selected');
         }
     }
 
@@ -148,11 +158,11 @@ class CustomSortableFileExplorerView extends ItemView {
 
     updateActiveFileHighlight() {
         if (!this.contentEl) return;
-        const prev = this.contentEl.querySelectorAll('.nav-file-title.is-active');
-        prev.forEach(el => el.classList.remove('is-active'));
+        const prev = this.contentEl.querySelectorAll('.sfe-file-title.sfe-is-active');
+        prev.forEach(el => el.classList.remove('sfe-is-active'));
         if (!this.activeFilePath) return;
-        const activeEl = this.contentEl.querySelector(`.nav-file-title[data-path="${CSS.escape(this.activeFilePath)}"]`);
-        if (activeEl) activeEl.classList.add('is-active');
+        const activeEl = this.contentEl.querySelector(`.sfe-file-title[data-path="${CSS.escape(this.activeFilePath)}"]`);
+        if (activeEl) activeEl.classList.add('sfe-is-active');
     }
 
     getViewType() {
@@ -173,18 +183,20 @@ class CustomSortableFileExplorerView extends ItemView {
         this._pendingScrollTop = prevScrollTop;
 
         // Avoid clearing the entire container to reduce blink; keep toolbar and swap explorer offscreen
-        this.contentEl.addClass('file-explorer-container');
+        // Add a plugin-specific scope root so CSS cannot affect Obsidian or other plugins
+        this.contentEl.addClass('sfe');
+        this.contentEl.addClass('sfe-container');
         this.contentEl.style.position = 'relative';
         // Respect icon visibility preference
-        if (this.plugin?.settings?.showIcons === false) this.contentEl.addClass('hide-icons');
-        else this.contentEl.removeClass('hide-icons');
-    // Toggle base badge visibility class (CSS also requires icons to be hidden)
-    if (this.plugin?.settings?.showBaseBadge) this.contentEl.addClass('show-base-badge');
-    else this.contentEl.removeClass('show-base-badge');
+        if (this.plugin?.settings?.showIcons === false) this.contentEl.addClass('sfe-hide-icons');
+        else this.contentEl.removeClass('sfe-hide-icons');
+        // Toggle base badge visibility class (CSS also requires icons to be hidden)
+        if (this.plugin?.settings?.showBaseBadge) this.contentEl.addClass('sfe-show-base-badge');
+        else this.contentEl.removeClass('sfe-show-base-badge');
         // Outline target mode class
         const mode = this.plugin?.settings?.outlineMode || 'focused';
-        this.contentEl.toggleClass('outline-mode-viewed', mode === 'viewed');
-        this.contentEl.toggleClass('outline-mode-focused', mode !== 'viewed');
+        this.contentEl.toggleClass('sfe-outline-mode-viewed', mode === 'viewed');
+        this.contentEl.toggleClass('sfe-outline-mode-focused', mode !== 'viewed');
         // Apply outline color CSS variables
         const setVar = (k, v) => { try { this.contentEl.style.setProperty(k, v); } catch (_) {} };
         const useCustom = !!(this.plugin?.settings?.useCustomOutlineColor);
@@ -220,7 +232,7 @@ class CustomSortableFileExplorerView extends ItemView {
 
         // Build toolbar (reuse if exists) and prepare a hidden new explorer to swap in
         this.renderToolbar();
-        const newExplorer = this.contentEl.createDiv({ cls: 'file-explorer-scroll' });
+        const newExplorer = this.contentEl.createDiv({ cls: 'sfe-scroll' });
         try { newExplorer.style.visibility = 'hidden'; } catch (_) {}
 
         await this.cleanupDeletedPaths();
@@ -281,13 +293,13 @@ class CustomSortableFileExplorerView extends ItemView {
 
     renderToolbar() {
         if (!this.toolbarEl) {
-            this.toolbarEl = this.contentEl.createDiv({ cls: 'file-explorer-toolbar' });
+            this.toolbarEl = this.contentEl.createDiv({ cls: 'sfe-toolbar' });
         } else {
             this.toolbarEl.empty();
         }
 
         const makeBtn = (icon, title, onClick) => {
-            const btn = this.toolbarEl.createDiv({ cls: 'file-explorer-btn', attr: { 'aria-label': title, 'title': title } });
+            const btn = this.toolbarEl.createDiv({ cls: 'sfe-btn', attr: { 'aria-label': title, 'title': title } });
             setIcon(btn, icon);
             btn.addEventListener('click', (e) => { e.preventDefault(); onClick(); });
             return btn;
@@ -518,17 +530,17 @@ class CustomSortableFileExplorerView extends ItemView {
         this.plugin.settings.collapsedFolders = this.collapsedFolders;
         if (changed) this.saveSettingsDebounced();
 
-        const resolvedTitle = titleEl ?? this.contentEl?.querySelector(`.nav-folder-title[data-path="${CSS.escape(folderPath)}"]`);
+        const resolvedTitle = titleEl ?? this.contentEl?.querySelector(`.sfe-folder-title[data-path="${CSS.escape(folderPath)}"]`);
         const resolvedChildren = childrenEl ?? resolvedTitle?.nextElementSibling;
-        const resolvedCollapse = collapseEl ?? resolvedTitle?.querySelector('.nav-folder-collapse-indicator');
+        const resolvedCollapse = collapseEl ?? resolvedTitle?.querySelector('.sfe-folder-collapse');
 
         if (resolvedChildren) {
-            if (typeof resolvedChildren.removeClass === 'function') resolvedChildren.removeClass('is-collapsed');
-            else resolvedChildren.classList?.remove('is-collapsed');
+            if (typeof resolvedChildren.removeClass === 'function') resolvedChildren.removeClass('sfe-is-collapsed');
+            else resolvedChildren.classList?.remove('sfe-is-collapsed');
         }
         if (resolvedCollapse) {
-            if (typeof resolvedCollapse.removeClass === 'function') resolvedCollapse.removeClass('is-collapsed');
-            else resolvedCollapse.classList?.remove('is-collapsed');
+            if (typeof resolvedCollapse.removeClass === 'function') resolvedCollapse.removeClass('sfe-is-collapsed');
+            else resolvedCollapse.classList?.remove('sfe-is-collapsed');
         }
     }
 
@@ -584,8 +596,8 @@ class CustomSortableFileExplorerView extends ItemView {
             const relativeY = event.clientY - containerRect.top;
 
             const el = document.elementFromPoint(event.clientX, event.clientY);
-            const overFolderTitle = el?.closest('.nav-folder-title');
-            const overFileTitle = el?.closest('.nav-file-title');
+            const overFolderTitle = el?.closest('.sfe-folder-title');
+            const overFileTitle = el?.closest('.sfe-file-title');
             const overItem = overFolderTitle || overFileTitle;
             const isWhitespace = !overItem;
 
@@ -595,11 +607,11 @@ class CustomSortableFileExplorerView extends ItemView {
                 //  - If over a file row: highlight its parent folder
                 //  - If over whitespace/left gutter: highlight root
                 // Clear previous highlights first
-                this.contentEl?.querySelectorAll('.is-drag-over-folder').forEach(el => el.removeClass('is-drag-over-folder'));
+                this.contentEl?.querySelectorAll('.sfe-is-drag-over-folder').forEach(el => el.removeClass('sfe-is-drag-over-folder'));
                 this.clearParentFolderHighlight();
 
                 if (overFolderTitle && overFolderTitle.hasAttribute('data-path')) {
-                    overFolderTitle.addClass('is-drag-over-folder');
+                    overFolderTitle.addClass('sfe-is-drag-over-folder');
                     return;
                 }
 
@@ -607,9 +619,9 @@ class CustomSortableFileExplorerView extends ItemView {
                     const filePath = overFileTitle.getAttribute('data-path') || '';
                     const parentPath = filePath.lastIndexOf('/') > -1 ? filePath.substring(0, filePath.lastIndexOf('/')) : '';
                     if (parentPath) {
-                        const parentFolderEl = this.contentEl.querySelector(`.nav-folder-title[data-path="${CSS.escape(parentPath)}"]`);
+                        const parentFolderEl = this.contentEl.querySelector(`.sfe-folder-title[data-path="${CSS.escape(parentPath)}"]`);
                         if (parentFolderEl) {
-                            parentFolderEl.addClass('is-drag-over-folder');
+                            parentFolderEl.addClass('sfe-is-drag-over-folder');
                             return;
                         }
                     }
@@ -650,7 +662,7 @@ class CustomSortableFileExplorerView extends ItemView {
         });
 
         container.addEventListener('dragenter', (event) => {
-            if (!event.target.closest('.nav-folder-title, .nav-file-title')) {
+            if (!event.target.closest('.sfe-folder-title, .sfe-file-title')) {
                 event.preventDefault();
                 event.dataTransfer.dropEffect = 'move';
             }
@@ -661,7 +673,7 @@ class CustomSortableFileExplorerView extends ItemView {
             if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) {
                 this.clearParentFolderHighlight();
                 // Also clear any per-folder hover highlights when leaving the explorer entirely
-                this.contentEl?.querySelectorAll('.is-drag-over-folder').forEach(el => el.removeClass('is-drag-over-folder'));
+                this.contentEl?.querySelectorAll('.sfe-is-drag-over-folder').forEach(el => el.removeClass('sfe-is-drag-over-folder'));
             }
         });
 
@@ -675,7 +687,7 @@ class CustomSortableFileExplorerView extends ItemView {
 
             // Check if we're in whitespace (matching dragover condition)
             const el = document.elementFromPoint(event.clientX, event.clientY);
-            const overItem = el?.closest('.nav-folder-title, .nav-file-title');
+            const overItem = el?.closest('.sfe-folder-title, .sfe-file-title');
             const isWhitespace = !overItem;
 
             // Finder/native file drop support
@@ -686,7 +698,7 @@ class CustomSortableFileExplorerView extends ItemView {
 
                 // Find the folder under the mouse, or vault root if in whitespace
                 let targetFolderPath = null;
-                const folderTitle = el?.closest('.nav-folder-title');
+                const folderTitle = el?.closest('.sfe-folder-title');
                 const isBottomWhitespace = !overItem && (relativeY > container.scrollHeight - 40 || relativeY > containerRect.height - 40);
                 if (folderTitle && folderTitle.hasAttribute('data-path')) {
                     targetFolderPath = folderTitle.getAttribute('data-path');
@@ -1035,7 +1047,7 @@ class CustomSortableFileExplorerView extends ItemView {
         container.addEventListener('contextmenu', (event) => {
             // Only show menu if clicking on empty space, not on a file or folder
             if (event.target === container ||
-                (!event.target.closest('.nav-folder-title') && !event.target.closest('.nav-file-title'))) {
+                (!event.target.closest('.sfe-folder-title') && !event.target.closest('.sfe-file-title'))) {
                 event.preventDefault();
                 event.stopPropagation();
 
@@ -1047,7 +1059,10 @@ class CustomSortableFileExplorerView extends ItemView {
                 if (this.selectedPaths && this.selectedPaths.size > 1) {
                     const handled = this.buildMultiSelectionMenu(menu);
                     if (handled) {
-                        if (menu.items.length > 0) menu.showAtMouseEvent(event);
+                        if (menu.items.length > 0) {
+                            this.tagMenuForStyling(menu);
+                            menu.showAtMouseEvent(event);
+                        }
                         return;
                     }
                 }
@@ -1117,6 +1132,7 @@ class CustomSortableFileExplorerView extends ItemView {
                 });
 
                 if (menu.items.length > 0) {
+                    this.tagMenuForStyling(menu);
                     menu.showAtMouseEvent(event);
                 }
             }
@@ -1124,23 +1140,23 @@ class CustomSortableFileExplorerView extends ItemView {
     }
 
     renderFolder(parentEl, folder, depth = 0) {
-        const folderEl = parentEl.createDiv('nav-folder');
-        const folderTitle = folderEl.createDiv('nav-folder-title');
+        const folderEl = parentEl.createDiv('sfe-folder');
+        const folderTitle = folderEl.createDiv('sfe-folder-title');
         folderTitle.setAttribute('data-path', folder.path);
         // Assign a monotonically increasing render index to preserve visual order
         folderTitle.dataset.order = (this._renderIndex = (this._renderIndex || 0) + 1).toString();
         folderTitle.style.paddingLeft = `${8 + (depth * 16)}px`;
-        const collapseEl = folderTitle.createDiv('nav-folder-collapse-indicator');
+        const collapseEl = folderTitle.createDiv('sfe-folder-collapse');
         setIcon(collapseEl, 'right-triangle');
-        const iconEl = folderTitle.createDiv('nav-folder-icon');
+        const iconEl = folderTitle.createDiv('sfe-folder-icon');
         setIcon(iconEl, 'folder');
-        folderTitle.createDiv('nav-folder-title-content').setText(folder.name);
+        folderTitle.createDiv('sfe-folder-title-content').setText(folder.name);
         folderTitle.setAttribute('draggable', 'true');
         this.setupDragAndDrop(folderTitle, folder);
         this.setupContextMenu(folderTitle, folder);
     const children = (folder.children || []).filter(c => !this.shouldIgnore(c));
     const sortedChildren = this.sortItems(children);
-        const folderContent = folderEl.createDiv('nav-folder-children');
+        const folderContent = folderEl.createDiv('sfe-folder-children');
         sortedChildren.forEach(child => {
             if (child instanceof TFolder) {
                 this.renderFolder(folderContent, child, depth + 1);
@@ -1149,8 +1165,8 @@ class CustomSortableFileExplorerView extends ItemView {
             }
         });
         if (this.collapsedFolders[folder.path]) {
-            folderContent.addClass('is-collapsed');
-            collapseEl.addClass('is-collapsed');
+            folderContent.addClass('sfe-is-collapsed');
+            collapseEl.addClass('sfe-is-collapsed');
         }
         folderTitle.addEventListener('click', async (event) => {
             // Do nothing while inline rename is active on this item
@@ -1184,15 +1200,15 @@ class CustomSortableFileExplorerView extends ItemView {
                 this.updateSelectionStyles();
                 return;
             }
-            if (event.target.closest('.nav-folder-collapse-indicator, .nav-folder-title-content, .nav-folder-icon') || event.target === folderTitle) {
+            if (event.target.closest('.sfe-folder-collapse, .sfe-folder-title-content, .sfe-folder-icon') || event.target === folderTitle) {
                 // Single-select on folder click without modifiers
                 this.selectedPaths.clear();
                 this.lastAnchorPath = path;
                 this.selectedPaths.add(path);
                 this.updateSelectionStyles();
-                const collapsed = !folderContent.hasClass('is-collapsed');
-                folderContent.toggleClass('is-collapsed', collapsed);
-                collapseEl.toggleClass('is-collapsed', collapsed);
+                const collapsed = !folderContent.hasClass('sfe-is-collapsed');
+                folderContent.toggleClass('sfe-is-collapsed', collapsed);
+                collapseEl.toggleClass('sfe-is-collapsed', collapsed);
                 if (collapsed) this.collapsedFolders[folder.path] = true;
                 else delete this.collapsedFolders[folder.path];
                 this.plugin.settings.collapsedFolders = this.collapsedFolders;
@@ -1203,24 +1219,24 @@ class CustomSortableFileExplorerView extends ItemView {
     }
 
     renderFile(parentEl, file, depth = 0) {
-        const fileEl = parentEl.createDiv('nav-file');
-        const fileTitle = fileEl.createDiv('nav-file-title');
+        const fileEl = parentEl.createDiv('sfe-file');
+        const fileTitle = fileEl.createDiv('sfe-file-title');
         fileTitle.setAttribute('data-path', file.path);
         fileTitle.dataset.order = (this._renderIndex = (this._renderIndex || 0) + 1).toString();
         fileTitle.style.paddingLeft = `${20 + (depth * 16)}px`;
-        const iconEl = fileTitle.createDiv('nav-file-icon');
+        const iconEl = fileTitle.createDiv('sfe-file-icon');
         this.setFileIcon(iconEl, file);
-        fileTitle.createDiv('nav-file-title-content').setText(this.getFileDisplayName(file));
+        fileTitle.createDiv('sfe-file-title-content').setText(this.getFileDisplayName(file));
         // Show a small "BASE" badge like core explorer when icons are hidden
         try {
             const ext = (file instanceof TFile) ? (file.extension || '') : '';
             if (ext === 'base') {
-                const badge = fileTitle.createDiv({ cls: 'file-badge file-badge-base', text: 'BASE' });
-                fileTitle.addClass('has-ext-badge');
+                fileTitle.createDiv({ cls: 'sfe-file-badge sfe-file-badge-base', text: 'BASE' });
+                fileTitle.addClass('sfe-has-ext-badge');
             }
         } catch (_) {}
         if (this.activeFilePath && file.path === this.activeFilePath) {
-            fileTitle.classList.add('is-active');
+            fileTitle.classList.add('sfe-is-active');
         }
         fileTitle.setAttribute('draggable', 'true');
         this.setupDragAndDrop(fileTitle, file);
@@ -1320,7 +1336,7 @@ class CustomSortableFileExplorerView extends ItemView {
         const itemEl = this.contentEl.querySelector(`[data-path="${CSS.escape(item.path)}"]`);
         if (!itemEl) return;
 
-        const titleContentEl = itemEl.querySelector('.nav-file-title-content, .nav-folder-title-content');
+        const titleContentEl = itemEl.querySelector('.sfe-file-title-content, .sfe-folder-title-content');
         if (!titleContentEl) return;
 
     titleContentEl.style.display = 'none';
@@ -1331,10 +1347,10 @@ class CustomSortableFileExplorerView extends ItemView {
     itemEl.setAttribute('draggable', 'false');
     itemEl.setAttribute('data-renaming', 'true');
 
-    const input = createEl('input', { type: 'text', cls: 'nav-item-rename' });
+    const input = createEl('input', { type: 'text', cls: 'sfe-item-rename' });
         input.value = item.name;
 
-        const iconEl = itemEl.querySelector('.nav-file-icon, .nav-folder-icon');
+        const iconEl = itemEl.querySelector('.sfe-file-icon, .sfe-folder-icon');
         iconEl.insertAdjacentElement('afterend', input);
 
     // Prevent input interactions from bubbling to parent (which could open files or toggle folders)
@@ -1394,12 +1410,12 @@ class CustomSortableFileExplorerView extends ItemView {
         if (parentFolder.isRoot()) {
             childrenContainer = this.contentEl;
         } else {
-            const parentEl = this.contentEl.querySelector(`.nav-folder-title[data-path="${CSS.escape(parentFolder.path)}"]`);
+            const parentEl = this.contentEl.querySelector(`.sfe-folder-title[data-path="${CSS.escape(parentFolder.path)}"]`);
             childrenContainer = parentEl?.nextElementSibling;
 
             if (!childrenContainer) return;
 
-            const collapseIcon = parentEl?.querySelector('.nav-folder-collapse-indicator') || null;
+            const collapseIcon = parentEl?.querySelector('.sfe-folder-collapse') || null;
             this.ensureFolderExpanded(parentFolder.path, {
                 titleEl: parentEl,
                 childrenEl: childrenContainer,
@@ -1407,14 +1423,14 @@ class CustomSortableFileExplorerView extends ItemView {
             });
         }
 
-        const tempFolderEl = childrenContainer.createDiv({ cls: 'nav-folder' });
-        const tempTitleEl = tempFolderEl.createDiv({ cls: 'nav-folder-title' });
+        const tempFolderEl = childrenContainer.createDiv({ cls: 'sfe-folder' });
+        const tempTitleEl = tempFolderEl.createDiv({ cls: 'sfe-folder-title' });
 
         const depth = parentFolder.isRoot() ? 0 : (parentFolder.path.match(/\//g) || []).length + 1;
         tempTitleEl.style.paddingLeft = `${8 + (depth * 16)}px`;
 
-        setIcon(tempTitleEl.createDiv({ cls: 'nav-folder-icon' }), 'folder');
-        const input = tempTitleEl.createEl('input', { type: 'text', cls: 'nav-item-rename' });
+        setIcon(tempTitleEl.createDiv({ cls: 'sfe-folder-icon' }), 'folder');
+        const input = tempTitleEl.createEl('input', { type: 'text', cls: 'sfe-item-rename' });
 
         input.focus();
 
@@ -1490,7 +1506,11 @@ class CustomSortableFileExplorerView extends ItemView {
             // If multi-selection (files/folders/mixed), show the restricted 4-option menu
             if (this.selectedPaths && this.selectedPaths.size > 1) {
                 const handled = this.buildMultiSelectionMenu(menu);
-                if (handled) { menu.showAtMouseEvent(event); return; }
+                if (handled) {
+                    this.tagMenuForStyling(menu);
+                    menu.showAtMouseEvent(event);
+                    return;
+                }
             }
 
             if (item instanceof TFile) {
@@ -1788,6 +1808,7 @@ class CustomSortableFileExplorerView extends ItemView {
             });
 
             if (menu.items.length > 0) {
+                this.tagMenuForStyling(menu);
                 menu.showAtMouseEvent(event);
             }
         });
@@ -1908,16 +1929,16 @@ class CustomSortableFileExplorerView extends ItemView {
             };
 
             const toggleFolder = async (path, expand) => {
-                const titleEl = this.contentEl.querySelector(`.nav-folder-title[data-path="${CSS.escape(path)}"]`);
+                const titleEl = this.contentEl.querySelector(`.sfe-folder-title[data-path="${CSS.escape(path)}"]`);
                 if (!titleEl) return;
                 const contentEl = titleEl.nextElementSibling;
                 if (!contentEl) return;
                 const shouldExpand = (expand === undefined)
-                    ? contentEl.classList.contains('is-collapsed')
+                    ? contentEl.classList.contains('sfe-is-collapsed')
                     : !!expand;
-                contentEl.toggleClass('is-collapsed', !shouldExpand);
-                const indicator = titleEl.querySelector('.nav-folder-collapse-indicator');
-                if (indicator) indicator.toggleClass('is-collapsed', !shouldExpand);
+                contentEl.toggleClass('sfe-is-collapsed', !shouldExpand);
+                const indicator = titleEl.querySelector('.sfe-folder-collapse');
+                if (indicator) indicator.toggleClass('sfe-is-collapsed', !shouldExpand);
                 if (!shouldExpand) this.collapsedFolders[path] = true; else delete this.collapsedFolders[path];
                 this.plugin.settings.collapsedFolders = this.collapsedFolders;
                 this.saveSettingsDebounced();
@@ -1938,7 +1959,7 @@ class CustomSortableFileExplorerView extends ItemView {
             const focusParent = (path) => {
                 const parentPath = this.getParentPath(path);
                 if (parentPath == null) return;
-                const parentEl = this.contentEl.querySelector(`.nav-folder-title[data-path="${CSS.escape(parentPath)}"]`);
+                const parentEl = this.contentEl.querySelector(`.sfe-folder-title[data-path="${CSS.escape(parentPath)}"]`);
                 if (parentEl) {
                     ensureSingleSelection(parentPath);
                 }
@@ -1967,10 +1988,10 @@ class CustomSortableFileExplorerView extends ItemView {
                     const el = getItemAt(idx);
                     const path = getPathAt(idx);
                     if (!el || !path) return;
-                    const isFolder = el.classList.contains('nav-folder-title');
+                    const isFolder = el.classList.contains('sfe-folder-title');
                     if (isFolder) {
                         const contentEl = el.nextElementSibling;
-                        const collapsed = contentEl?.classList.contains('is-collapsed');
+                        const collapsed = contentEl?.classList.contains('sfe-is-collapsed');
                         if (collapsed) {
                             await toggleFolder(path, true);
                         } else {
@@ -1987,10 +2008,10 @@ class CustomSortableFileExplorerView extends ItemView {
                     const el = getItemAt(idx);
                     const path = getPathAt(idx);
                     if (!el || !path) return;
-                    const isFolder = el.classList.contains('nav-folder-title');
+                    const isFolder = el.classList.contains('sfe-folder-title');
                     if (isFolder) {
                         const contentEl = el.nextElementSibling;
-                        const collapsed = contentEl?.classList.contains('is-collapsed');
+                        const collapsed = contentEl?.classList.contains('sfe-is-collapsed');
                         if (!collapsed) {
                             await toggleFolder(path, false);
                         } else {
@@ -2227,11 +2248,11 @@ class CustomSortableFileExplorerView extends ItemView {
             // Cache for faster dragover access
             this._dragData = dragData;
             this._dragging = true;
-            element.addClass('is-being-dragged');
+            element.addClass('sfe-is-being-dragged');
         });
 
         element.addEventListener('dragend', () => {
-            element.removeClass('is-being-dragged');
+            element.removeClass('sfe-is-being-dragged');
             this._dragging = false;
             this.cancelDragOverThrottle();
             this.clearDropIndicators();
@@ -2263,10 +2284,10 @@ class CustomSortableFileExplorerView extends ItemView {
                     const centerThreshold = rect.height * 0.3;
                     if (relativeY > centerThreshold && relativeY < (rect.height - centerThreshold)) {
                         this.clearDropIndicators();
-                        element.addClass('is-drag-over-folder');
+                        element.addClass('sfe-is-drag-over-folder');
                         return;
                     } else {
-                        element.removeClass('is-drag-over-folder');
+                        element.removeClass('sfe-is-drag-over-folder');
                     }
                 }
                 const isUpperHalf = relativeY < rect.height / 2;
@@ -2301,7 +2322,7 @@ class CustomSortableFileExplorerView extends ItemView {
         element.addEventListener('dragleave', (event) => {
             const rect = element.getBoundingClientRect();
             if (!(event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom)) {
-                element.removeClass('is-drag-over-folder');
+                element.removeClass('sfe-is-drag-over-folder');
             }
         });
 
@@ -2310,7 +2331,7 @@ class CustomSortableFileExplorerView extends ItemView {
             const containerRect = this.contentEl.getBoundingClientRect();
             const relativeX = event.clientX - containerRect.left;
             const el = document.elementFromPoint(event.clientX, event.clientY);
-            const overItem = el?.closest('.nav-folder-title, .nav-file-title');
+            const overItem = el?.closest('.sfe-folder-title, .sfe-file-title');
             const isWhitespace = !overItem;
             const isRootDrop = (relativeX < 30) || isWhitespace;
             
@@ -2321,7 +2342,7 @@ class CustomSortableFileExplorerView extends ItemView {
 
             event.preventDefault();
             event.stopPropagation();
-            element.removeClass('is-drag-over-folder');
+            element.removeClass('sfe-is-drag-over-folder');
             this._dragging = false;
             this.cancelDragOverThrottle();
             this.clearDropIndicators();
@@ -2434,9 +2455,9 @@ class CustomSortableFileExplorerView extends ItemView {
     }
 
     getNextSiblingElement(element) {
-        const parentContainer = element.closest('.nav-folder-children') || this.contentEl;
+        const parentContainer = element.closest('.sfe-folder-children') || this.contentEl;
         if (!parentContainer) return null;
-        const allItems = Array.from(parentContainer.querySelectorAll(':scope > .nav-folder > .nav-folder-title, :scope > .nav-file > .nav-file-title'));
+        const allItems = Array.from(parentContainer.querySelectorAll(':scope > .sfe-folder > .sfe-folder-title, :scope > .sfe-file > .sfe-file-title'));
         const currentIndex = allItems.indexOf(element);
         return currentIndex > -1 && currentIndex < allItems.length - 1 ? allItems[currentIndex + 1] : null;
     }
@@ -2448,7 +2469,7 @@ class CustomSortableFileExplorerView extends ItemView {
         let indicator = this.currentDropIndicator;
         if (!indicator || !indicator.isConnected) {
             indicator = document.createElement('div');
-            indicator.className = 'file-explorer-drop-indicator';
+            indicator.className = 'sfe-drop-indicator';
             container.appendChild(indicator);
             this.currentDropIndicator = indicator;
         }
@@ -2465,12 +2486,12 @@ class CustomSortableFileExplorerView extends ItemView {
         this.currentDropIndicatorPosition = null;
         // Also cancel any pending dragover work that might recreate the indicator
         this.cancelDragOverThrottle();
-    this.contentEl?.querySelectorAll('.file-explorer-drop-indicator').forEach(el => el.remove());
+        this.contentEl?.querySelectorAll('.sfe-drop-indicator').forEach(el => el.remove());
         if (this.currentDropIndicator) {
             this.currentDropIndicator.remove();
             this.currentDropIndicator = null;
         }
-        this.contentEl?.querySelectorAll('.is-drag-over-folder').forEach(el => el.removeClass('is-drag-over-folder'));
+        this.contentEl?.querySelectorAll('.sfe-is-drag-over-folder').forEach(el => el.removeClass('sfe-is-drag-over-folder'));
     }
 
     getParentFolderAtDepth(path, targetDepth) {
@@ -2489,16 +2510,16 @@ class CustomSortableFileExplorerView extends ItemView {
         this.clearDropIndicators();
         this.clearParentFolderHighlight();
         if (parentPath === null || parentPath === '') {
-            this.contentEl.addClass('parent-folder-drop-zone');
+            this.contentEl.addClass('sfe-parent-folder-drop-zone');
         } else {
-            const folderEl = this.contentEl.querySelector(`.nav-folder-title[data-path="${CSS.escape(parentPath)}"]`);
-            if (folderEl) folderEl.addClass('parent-folder-drop-target');
+            const folderEl = this.contentEl.querySelector(`.sfe-folder-title[data-path="${CSS.escape(parentPath)}"]`);
+            if (folderEl) folderEl.addClass('sfe-parent-folder-drop-target');
         }
     }
 
     clearParentFolderHighlight() {
-        this.contentEl.removeClass('parent-folder-drop-zone');
-        this.contentEl.querySelectorAll('.parent-folder-drop-target').forEach(el => el.removeClass('parent-folder-drop-target'));
+        this.contentEl.removeClass('sfe-parent-folder-drop-zone');
+        this.contentEl.querySelectorAll('.sfe-parent-folder-drop-target').forEach(el => el.removeClass('sfe-parent-folder-drop-target'));
     }
 
     // Open a folder suggester modal and move all selected files

@@ -1115,7 +1115,14 @@ class CustomSortableFileExplorerView extends ItemView {
                     });
                 }
 
-                // Remove duplicate 'New note' entry that referenced an undefined variable in this scope
+                menu.addItem((i) => {
+                    i.setTitle("New base")
+                        .setIcon("layout-list")
+                        .setSection("new")
+                        .onClick(() => {
+                            this.createNewBaseFile(rootFolder);
+                        });
+                });
 
                 const sectionOrder = ['new', 'open', 'action', 'export', 'copy', 'system', 'info', 'danger'];
                 menu.items.sort((a, b) => {

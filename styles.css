@@ -11,15 +11,21 @@
 /* File explorer container - IMPORTANT: position relative for drop indicators */
 .sfe.sfe-container {
     position: relative !important;
-    height: 100%;
+    /* In Obsidian panes, height:100% is not always resolvable; use flex sizing instead. */
+    height: auto;
+    min-height: 0;
+    flex: 1 1 auto;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
+    padding: 0 !important;
 }
 
 .sfe .sfe-toolbar {
     position: sticky;
     top: 0;
     z-index: 5;
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -30,6 +36,7 @@
     overflow: auto;
     padding: 6px 0;
     flex: 1 1 auto;
+    min-height: 0;
 }
 
 .sfe .sfe-btn {

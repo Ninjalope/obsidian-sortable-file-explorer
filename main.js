@@ -49,13 +49,12 @@ class CustomSortableFileExplorerView extends ItemView {
         } catch (_) {}
     }
 
-    // fallback: try to mirror selection into core file explorer DOM and run native move
+    // Prefer the native move dialog when the core file explorer is available.
     openNativeMoveDialogForSelection() {
         const leaves = this.app.workspace.getLeavesOfType('file-explorer');
         const fileExplorerLeaf = leaves && leaves.length ? leaves[0] : null;
         if (!fileExplorerLeaf) {
-            new Notice('File Explorer is not available');
-            return;
+            return false;
         }
 
         // Attempt to apply CSS selection to matching items in core explorer DOM so menu reflects count
@@ -78,8 +77,9 @@ class CustomSortableFileExplorerView extends ItemView {
         const cmdId = 'file-explorer:move-file';
         if (this.app.commands?.commands?.[cmdId]) {
             this.app.commands.executeCommandById(cmdId);
+            return true;
         } else {
-            new Notice('Move command not available');
+            return false;
         }
     }
 
@@ -320,7 +320,8 @@ class CustomSortableFileExplorerView extends ItemView {
     async createAndOpenNewNote(folder) {
         try {
             // If no folder is provided, honor the user's default new note location
-            const targetFolder = folder ?? this.getDefaultNewFileFolder();
+            const activeFile = this.app.workspace.getActiveFile();
+            const targetFolder = folder ?? this.app.fileManager.getNewFileParent(activeFile?.path || '', 'Untitled.md');
             const newFile = await this.app.fileManager.createNewFile(targetFolder);
             if (!(newFile instanceof TFile)) return;
             // Open in the current tab (vanilla Obsidian behavior). Prefer unpinned leaf.
@@ -356,62 +357,36 @@ class CustomSortableFileExplorerView extends ItemView {
         return ws.getLeaf ? ws.getLeaf() : ws.getLeaf(false);
     }
 
-    // Resolve the folder for new notes based on core settings
-    getDefaultNewFileFolder() {
-        const vault = this.app.vault;
-        const getCfg = typeof vault.getConfig === 'function' ? (k) => vault.getConfig(k) : (k) => vault?.config?.[k];
-        const location = getCfg ? getCfg('newFileLocation') : undefined; // 'vault' | 'current' | 'folder'
-
-        // Helper to resolve paths to TFolder
-        const resolveFolder = (path) => {
-            const af = path ? this.app.vault.getAbstractFileByPath(path) : null;
-            return (af instanceof TFolder) ? af : this.app.vault.getRoot();
-        };
-
-        if (location === 'current') {
-            const active = this.app.workspace.getActiveFile();
-            return active?.parent instanceof TFolder ? active.parent : this.app.vault.getRoot();
-        }
-        if (location === 'folder') {
-            const folderPath = getCfg ? (getCfg('newFileFolderPath') || '') : '';
-            return resolveFolder(folderPath);
-        }
-        // Default: vault root
-        return this.app.vault.getRoot();
-    }
-
     // Poll briefly for the Markdown editor to be available on the given leaf
     async waitForEditorOnLeaf(leaf, maxTries = 20, delayMs = 50) {
         for (let i = 0; i < maxTries; i++) {
             const view = leaf?.view;
             if (view instanceof MarkdownView && view.editor) return view.editor;
-            await new Promise((r) => setTimeout(r, delayMs));
+            await new Promise((r) => window.setTimeout(r, delayMs));
         }
         return null;
     }
 
-    // Determine the title line to highlight: first heading after YAML frontmatter,
-    // else the first non-empty line; fallback to the first line.
-    findTitleLineIndex(editor) {
+    findTitleLineIndex(editor, file) {
         try {
             const lineCount = editor.lineCount ? editor.lineCount() : editor.lastLine() + 1;
             if (!lineCount) return 0;
-            let idx = 0;
-            // Skip YAML frontmatter if present
-            if ((editor.getLine(0) || '').trim() === '---') {
-                idx = 1;
-                while (idx < lineCount) {
-                    if ((editor.getLine(idx) || '').trim() === '---') { idx++; break; }
-                    idx++;
-                }
+            const fileCache = file ? this.app.metadataCache.getFileCache(file) : null;
+            const frontmatterEndLine = fileCache?.frontmatterPosition?.end?.line;
+            const startLine = typeof frontmatterEndLine === 'number'
+                ? Math.min(frontmatterEndLine + 1, Math.max(lineCount - 1, 0))
+                : 0;
+
+            const firstHeadingLine = (fileCache?.headings || [])
+                .map((heading) => heading?.position?.start?.line)
+                .find((line) => typeof line === 'number' && line >= startLine);
+
+            if (typeof firstHeadingLine === 'number') {
+                return firstHeadingLine;
             }
-            // Scan for first heading line
-            for (let i = idx; i < lineCount; i++) {
-                const t = (editor.getLine(i) || '').trim();
-                if (t.startsWith('#')) return i;
-            }
+
             // Otherwise first non-empty line
-            for (let i = idx; i < lineCount; i++) {
+            for (let i = startLine; i < lineCount; i++) {
                 const t = (editor.getLine(i) || '').trim();
                 if (t.length > 0) return i;
             }
@@ -432,7 +407,7 @@ class CustomSortableFileExplorerView extends ItemView {
         let lastLineCount = editor.lineCount ? editor.lineCount() : (editor.lastLine ? editor.lastLine() + 1 : 0);
         const selectInlineTitle = () => this.trySelectInlineTitle(view);
         const selectEditorTitleLine = () => {
-            const titleLine = this.findTitleLineIndex(editor);
+            const titleLine = this.findTitleLineIndex(editor, file);
             const titleText = editor.getLine(titleLine) ?? '';
             try { editor.setSelection({ line: titleLine, ch: 0 }, { line: titleLine, ch: titleText.length }); } catch (_) {}
             try { editor.focus(); } catch (_) {}
@@ -446,7 +421,7 @@ class CustomSortableFileExplorerView extends ItemView {
         
         // Re-apply briefly only when content changes and user hasn't typed
         for (let i = 0; i < tries; i++) {
-            await new Promise(r => setTimeout(r, delayMs));
+            await new Promise(r => window.setTimeout(r, delayMs));
             if (userInteracted) break;
             const lc = editor.lineCount ? editor.lineCount() : (editor.lastLine ? editor.lastLine() + 1 : 0);
             if (lc !== lastLineCount) {
@@ -470,7 +445,7 @@ class CustomSortableFileExplorerView extends ItemView {
                 } catch (_) {}
             });
             // Auto-clean after a short window
-            setTimeout(() => {
+            window.setTimeout(() => {
                 active = false;
                 try { if (typeof this.app.vault.offref === 'function') this.app.vault.offref(ref); } catch (_) {}
             }, 2000);
@@ -873,21 +848,10 @@ class CustomSortableFileExplorerView extends ItemView {
         });
     }
 
-    // Respect the user's trash preference when deleting files/folders
+    // Respect the user's trash preference via Obsidian's FileManager
     async trashItem(item) {
         try {
-            const vault = this.app.vault;
-            const getCfg = typeof vault.getConfig === 'function' ? (k) => vault.getConfig(k) : (k) => vault?.config?.[k];
-            const trashOption = getCfg ? getCfg('trashOption') : undefined;
-            if (trashOption === 'system') {
-                await vault.trash(item, true);
-            } else if (trashOption === 'none') {
-                // Permanent delete
-                await vault.delete(item);
-            } else {
-                // Default/local Obsidian trash (.trash folder)
-                await vault.trash(item, false);
-            }
+            await this.app.fileManager.trashFile(item);
         } catch (err) {
             console.error('Failed to delete/trash item', err);
             new Notice('Failed to delete item');
@@ -2235,7 +2199,7 @@ class CustomSortableFileExplorerView extends ItemView {
                 if (e.key === 'Enter') { e.preventDefault(); done(input.value); }
                 else if (e.key === 'Escape') { e.preventDefault(); done(null); }
             });
-            modal.onOpen = () => { setTimeout(() => { input.focus(); input.select(); }, 0); };
+            modal.onOpen = () => { window.setTimeout(() => { input.focus(); input.select(); }, 0); };
             modal.onClose = () => resolve(null);
             modal.open();
         });
@@ -2531,6 +2495,10 @@ class CustomSortableFileExplorerView extends ItemView {
 
     // Open a folder suggester modal and move all selected files
     async openMoveModalForSelection() {
+        if (this.openNativeMoveDialogForSelection()) {
+            return;
+        }
+
         const { FuzzySuggestModal } = require('obsidian');
         
         const selected = Array.from(this.selectedPaths).filter(p => !!this.app.vault.getAbstractFileByPath(p));

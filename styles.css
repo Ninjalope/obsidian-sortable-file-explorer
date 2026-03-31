@@ -39,6 +39,10 @@
     min-height: 0;
 }
 
+.sfe .sfe-scroll.sfe-is-building {
+    visibility: hidden;
+}
+
 .sfe .sfe-btn {
     width: 26px;
     height: 26px;
@@ -71,7 +75,7 @@
     display: flex;
     align-items: center;
     height: 24px;
-    /* padding-left is set dynamically in JS based on depth */
+    padding-left: var(--sfe-indent, 8px);
     padding-right: 8px;
     padding-top: 2px;
     padding-bottom: 2px;
@@ -147,7 +151,7 @@
     display: flex;
     align-items: center;
     height: 24px;
-    /* padding-left is set dynamically in JS based on depth */
+    padding-left: var(--sfe-indent, 20px);
     padding-right: 8px;
     padding-top: 2px;
     padding-bottom: 2px;
@@ -242,6 +246,11 @@
     display: none !important;
 }
 
+.sfe .sfe-file-title[data-renaming="true"] .sfe-file-title-content,
+.sfe .sfe-folder-title[data-renaming="true"] .sfe-folder-title-content {
+    display: none;
+}
+
 /* Inline rename input */
 .sfe .sfe-item-rename {
     background: var(--background-modifier-form-field);
@@ -304,6 +313,9 @@
 /* Drop indicator line styles - High specificity and visibility */
 .sfe .sfe-drop-indicator {
     position: absolute !important;
+    top: var(--sfe-drop-top, 0px) !important;
+    left: 10px !important;
+    width: var(--sfe-drop-width, 0px) !important;
     height: 2px !important;
     background: var(--interactive-accent) !important;
     pointer-events: none !important;

@@ -186,7 +186,6 @@ class CustomSortableFileExplorerView extends ItemView {
         // Add a plugin-specific scope root so CSS cannot affect Obsidian or other plugins
         this.contentEl.addClass('sfe');
         this.contentEl.addClass('sfe-container');
-        this.contentEl.style.position = 'relative';
         // Respect icon visibility preference
         if (this.plugin?.settings?.showIcons === false) this.contentEl.addClass('sfe-hide-icons');
         else this.contentEl.removeClass('sfe-hide-icons');
@@ -233,7 +232,7 @@ class CustomSortableFileExplorerView extends ItemView {
         // Build toolbar (reuse if exists) and prepare a hidden new explorer to swap in
         this.renderToolbar();
         const newExplorer = this.contentEl.createDiv({ cls: 'sfe-scroll' });
-        try { newExplorer.style.visibility = 'hidden'; } catch (_) {}
+        newExplorer.classList.add('sfe-is-building');
 
         await this.cleanupDeletedPaths();
         this.collapsedFolders = this.plugin.settings.collapsedFolders || {};
@@ -244,7 +243,7 @@ class CustomSortableFileExplorerView extends ItemView {
         // Build offscreen to avoid visual blink, then swap in
         this.buildFileExplorer(newExplorer);
         const oldExplorer = this.explorerEl && this.explorerEl.isConnected ? this.explorerEl : null;
-        try { newExplorer.style.visibility = ''; } catch (_) {}
+        newExplorer.classList.remove('sfe-is-building');
         if (oldExplorer && oldExplorer !== newExplorer) {
             try { oldExplorer.remove(); } catch (_) {}
         }
@@ -1116,7 +1115,7 @@ class CustomSortableFileExplorerView extends ItemView {
         folderTitle.setAttribute('data-path', folder.path);
         // Assign a monotonically increasing render index to preserve visual order
         folderTitle.dataset.order = (this._renderIndex = (this._renderIndex || 0) + 1).toString();
-        folderTitle.style.paddingLeft = `${8 + (depth * 16)}px`;
+        folderTitle.style.setProperty('--sfe-indent', `${8 + (depth * 16)}px`);
         const collapseEl = folderTitle.createDiv('sfe-folder-collapse');
         setIcon(collapseEl, 'right-triangle');
         const iconEl = folderTitle.createDiv('sfe-folder-icon');
@@ -1194,7 +1193,7 @@ class CustomSortableFileExplorerView extends ItemView {
         const fileTitle = fileEl.createDiv('sfe-file-title');
         fileTitle.setAttribute('data-path', file.path);
         fileTitle.dataset.order = (this._renderIndex = (this._renderIndex || 0) + 1).toString();
-        fileTitle.style.paddingLeft = `${20 + (depth * 16)}px`;
+        fileTitle.style.setProperty('--sfe-indent', `${20 + (depth * 16)}px`);
         const iconEl = fileTitle.createDiv('sfe-file-icon');
         this.setFileIcon(iconEl, file);
         fileTitle.createDiv('sfe-file-title-content').setText(this.getFileDisplayName(file));
@@ -1310,8 +1309,6 @@ class CustomSortableFileExplorerView extends ItemView {
         const titleContentEl = itemEl.querySelector('.sfe-file-title-content, .sfe-folder-title-content');
         if (!titleContentEl) return;
 
-    titleContentEl.style.display = 'none';
-
     // Mark item as being renamed and disable dragging during rename
     const prevDraggable = itemEl.getAttribute('draggable') ?? '';
     itemEl.dataset.prevDraggable = prevDraggable;
@@ -1347,7 +1344,6 @@ class CustomSortableFileExplorerView extends ItemView {
 
             const newName = input.value.trim();
             input.remove();
-            titleContentEl.style.display = '';
 
             // Restore drag/rename flags
             if (itemEl.dataset.prevDraggable !== '') itemEl.setAttribute('draggable', itemEl.dataset.prevDraggable);
@@ -1398,7 +1394,7 @@ class CustomSortableFileExplorerView extends ItemView {
         const tempTitleEl = tempFolderEl.createDiv({ cls: 'sfe-folder-title' });
 
         const depth = parentFolder.isRoot() ? 0 : (parentFolder.path.match(/\//g) || []).length + 1;
-        tempTitleEl.style.paddingLeft = `${8 + (depth * 16)}px`;
+        tempTitleEl.style.setProperty('--sfe-indent', `${8 + (depth * 16)}px`);
 
         setIcon(tempTitleEl.createDiv({ cls: 'sfe-folder-icon' }), 'folder');
         const input = tempTitleEl.createEl('input', { type: 'text', cls: 'sfe-item-rename' });
@@ -2447,7 +2443,8 @@ class CustomSortableFileExplorerView extends ItemView {
         const rect = targetElement.getBoundingClientRect();
         const containerRect = container.getBoundingClientRect();
         const top = Math.round(rect.top - containerRect.top + container.scrollTop + (isUpperHalf ? 0 : rect.height));
-        indicator.style.cssText = `position: absolute; top: ${top}px; left: 10px; width: ${Math.round(containerRect.width - 20)}px; height: 2px; background-color: var(--interactive-accent); pointer-events: none; z-index: 9999;`;
+        indicator.style.setProperty('--sfe-drop-top', `${top}px`);
+        indicator.style.setProperty('--sfe-drop-width', `${Math.round(containerRect.width - 20)}px`);
         // Persist metadata so we can interpret indicator drop even if pointer is between items
         indicator.dataset.targetPath = targetElement.getAttribute('data-path');
         indicator.dataset.insertBefore = isUpperHalf ? 'true' : 'false';

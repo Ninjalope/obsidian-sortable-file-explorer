@@ -30,6 +30,11 @@ class CustomSortableFileExplorerView extends ItemView {
         this._dragQueue = null;   // queued dragover job
         this._dragData = null;    // cached drag data for faster access during drag
     this._dragging = false;   // true while a drag originated from this view is active
+        this._dragPreviewEl = null;
+        this._dragPreviewHintEl = null;
+        // Pre-load transparent drag image so it's ready before the first drag
+        this._transparentDragImageEl = new Image();
+        this._transparentDragImageEl.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
         // Multi-select state
         this.selectedPaths = new Set();
         this.lastAnchorPath = null; // anchor for shift-range selection
@@ -182,7 +187,6 @@ class CustomSortableFileExplorerView extends ItemView {
         const prevScrollTop = this.explorerEl?.scrollTop ?? this._pendingScrollTop ?? 0;
         this._pendingScrollTop = prevScrollTop;
 
-        // Avoid clearing the entire container to reduce blink; keep toolbar and swap explorer offscreen
         // Add a plugin-specific scope root so CSS cannot affect Obsidian or other plugins
         this.contentEl.addClass('sfe');
         this.contentEl.addClass('sfe-container');
@@ -214,8 +218,6 @@ class CustomSortableFileExplorerView extends ItemView {
                 setVar('--sfe-accent-fill', `rgba(${r}, ${g}, ${b}, 0.15)`);
             }
         } else {
-            // Use Obsidian's vanilla file explorer style (neutral grey border)
-            // We intentionally set the CSS var to a theme variable so it adapts to light/dark themes.
             setVar('--sfe-outline-color', 'var(--background-modifier-border)');
             // Secondary/accent fill: keep soft hover-like shading when needed
             setVar('--sfe-outline-color-secondary', 'var(--background-modifier-border)');
@@ -545,6 +547,7 @@ class CustomSortableFileExplorerView extends ItemView {
             // Allow drop feedback during drag
             event.preventDefault();
             if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+            this.updateDragPreviewPosition(event.clientX, event.clientY);
 
             // Detect external drags (from Finder/Explorer)
             const dt = event.dataTransfer;
@@ -573,14 +576,9 @@ class CustomSortableFileExplorerView extends ItemView {
             const overFolderTitle = el?.closest('.sfe-folder-title');
             const overFileTitle = el?.closest('.sfe-file-title');
             const overItem = overFolderTitle || overFileTitle;
-            const isWhitespace = !overItem;
+            const isWhitespace = !overItem && (!el || el === container || !container.contains(el));
 
             if (isExternal) {
-                // For external drags, highlight the exact folder that will receive the files.
-                //  - If over a folder row: highlight that folder
-                //  - If over a file row: highlight its parent folder
-                //  - If over whitespace/left gutter: highlight root
-                // Clear previous highlights first
                 this.contentEl?.querySelectorAll('.sfe-is-drag-over-folder').forEach(el => el.removeClass('sfe-is-drag-over-folder'));
                 this.clearParentFolderHighlight();
 
@@ -625,14 +623,19 @@ class CustomSortableFileExplorerView extends ItemView {
             if (overIndicator) {
                 // Prevent container root highlight while over the indicator line
                 this.clearParentFolderHighlight();
+                this.clearDragPreviewTarget();
                 return; // Let the indicator stand; reordering logic handled on drop
             }
 
             if (relativeX < 30 || isWhitespace) {
                 // Outline the vault (root drop zone)
+                this._updateDragHintForTarget('');
                 this.showParentFolderDropZone(null);
                 return;
             }
+            // Cursor is over item rows — clear any stale root/container highlights;
+            // the per-item dragover handler takes over from here.
+            this.clearParentFolderHighlight();
         });
 
         container.addEventListener('dragenter', (event) => {
@@ -646,6 +649,7 @@ class CustomSortableFileExplorerView extends ItemView {
             const rect = container.getBoundingClientRect();
             if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) {
                 this.clearParentFolderHighlight();
+                this.clearDragPreviewTarget();
                 // Also clear any per-folder hover highlights when leaving the explorer entirely
                 this.contentEl?.querySelectorAll('.sfe-is-drag-over-folder').forEach(el => el.removeClass('sfe-is-drag-over-folder'));
             }
@@ -669,6 +673,7 @@ class CustomSortableFileExplorerView extends ItemView {
                 event.preventDefault();
                 this.clearDropIndicators();
                 this.clearParentFolderHighlight();
+                this.clearDragPreviewTarget();
 
                 // Find the folder under the mouse, or vault root if in whitespace
                 let targetFolderPath = null;
@@ -710,6 +715,7 @@ class CustomSortableFileExplorerView extends ItemView {
                 event.preventDefault();
                 this.clearDropIndicators();
                 this.clearParentFolderHighlight();
+                this.clearDragPreviewTarget();
                 try {
                     const dataTxt = event.dataTransfer.getData('text/plain');
                     const dragData = dataTxt ? JSON.parse(dataTxt) : {};
@@ -2201,6 +2207,92 @@ class CustomSortableFileExplorerView extends ItemView {
         });
     }
 
+    getDragPreviewLabel(item, itemCount = 1) {
+        if (itemCount > 1) return `${itemCount} items`;
+        return item instanceof TFile ? this.getFileDisplayName(item) : item.name;
+    }
+
+    createDragPreview(item, itemCount = 1) {
+        this.destroyDragPreview();
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'sfe-drag-preview';
+
+        const card = document.createElement('div');
+        card.className = 'sfe-drag-preview-card';
+
+        const titleRow = document.createElement('div');
+        titleRow.className = 'sfe-drag-preview-title';
+
+        const iconEl = document.createElement('div');
+        iconEl.className = 'sfe-drag-preview-icon';
+        if (item instanceof TFolder) setIcon(iconEl, 'folder');
+        else this.setFileIcon(iconEl, item);
+
+        const labelEl = document.createElement('div');
+        labelEl.className = 'sfe-drag-preview-label';
+        labelEl.textContent = this.getDragPreviewLabel(item, itemCount);
+
+        const hintEl = document.createElement('div');
+        hintEl.className = 'sfe-drag-preview-hint';
+
+        titleRow.appendChild(iconEl);
+        titleRow.appendChild(labelEl);
+        card.appendChild(titleRow);
+        card.appendChild(hintEl);
+        wrapper.appendChild(card);
+        document.body.appendChild(wrapper);
+
+        this._dragPreviewEl = wrapper;
+        this._dragPreviewHintEl = hintEl;
+        return wrapper;
+    }
+
+    updateDragPreviewTarget(folderName) {
+        if (!this._dragPreviewEl || !this._dragPreviewHintEl) return;
+        this._dragPreviewHintEl.textContent = `Move into "${folderName}"`;
+        this._dragPreviewEl.classList.add('sfe-drag-preview-has-target');
+    }
+
+    clearDragPreviewTarget() {
+        if (this._dragPreviewEl) this._dragPreviewEl.classList.remove('sfe-drag-preview-has-target');
+        if (this._dragPreviewHintEl) this._dragPreviewHintEl.textContent = '';
+    }
+
+    _updateDragHintForTarget(targetParentPath) {
+        const dragData = this._dragData || {};
+        const primaryPath = dragData.primary || (dragData.paths || [])[0] || '';
+        const draggedParent = primaryPath.lastIndexOf('/') > -1 ? primaryPath.substring(0, primaryPath.lastIndexOf('/')) : '';
+        if (draggedParent !== targetParentPath) {
+            const name = targetParentPath
+                ? targetParentPath.substring(targetParentPath.lastIndexOf('/') + 1)
+                : this.app.vault.getName();
+            this.updateDragPreviewTarget(name);
+        } else {
+            this.clearDragPreviewTarget();
+        }
+    }
+
+    updateDragPreviewPosition(clientX, clientY) {
+        if (!this._dragPreviewEl) return;
+        const x = Math.round(clientX + 6);
+        const y = Math.round(clientY + 4);
+        this._dragPreviewEl.style.setProperty('transform', `translate(${x}px, ${y}px)`, 'important');
+    }
+
+    getTransparentDragImage() {
+        return this._transparentDragImageEl;
+    }
+
+    destroyDragPreview() {
+        this.clearDragPreviewTarget();
+        if (this._dragPreviewEl) {
+            this._dragPreviewEl.remove();
+            this._dragPreviewEl = null;
+        }
+        this._dragPreviewHintEl = null;
+    }
+
     setupDragAndDrop(element, item) {
         element.addEventListener('dragstart', (event) => {
             event.dataTransfer.effectAllowed = 'move';
@@ -2216,6 +2308,14 @@ class CustomSortableFileExplorerView extends ItemView {
             this._dragData = dragData;
             this._dragging = true;
             element.addClass('sfe-is-being-dragged');
+
+            try {
+                const preview = this.createDragPreview(item, selected.length);
+                if (preview) {
+                    this.updateDragPreviewPosition(event.clientX, event.clientY);
+                    event.dataTransfer.setDragImage(this.getTransparentDragImage(), 0, 0);
+                }
+            } catch (_) {}
         });
 
         element.addEventListener('dragend', () => {
@@ -2225,38 +2325,61 @@ class CustomSortableFileExplorerView extends ItemView {
             this.clearDropIndicators();
             this.clearParentFolderHighlight();
             this._dragData = null;
+            this.destroyDragPreview();
         });
 
         element.addEventListener('dragover', this.scheduleDragOver((event) => {
             try {
                 // Ignore if no internal drag is currently active (prevents stale rAF after drop)
                 if (!this._dragging) return;
+                this.updateDragPreviewPosition(event.clientX, event.clientY);
                 const dragData = this._dragData || {};
                 const paths = dragData.paths || (dragData.path ? [dragData.path] : []);
-                if (paths.length === 1 && paths[0] === item.path) return;
+                if (paths.length === 1 && paths[0] === item.path) {
+                    this.clearDragPreviewTarget();
+                    return;
+                }
                 const rect = element.getBoundingClientRect();
                 const containerRect = this.contentEl.getBoundingClientRect();
                 const relativeX = event.clientX - containerRect.left;
-                const currentDepth = Math.floor((rect.left - containerRect.left - 8) / 16);
-                const targetDepth = Math.floor((relativeX - 8) / 16);
-                if (targetDepth < currentDepth - 1 && relativeX < rect.left - containerRect.left - 20) {
-                    const parentPath = this.getParentFolderAtDepth(item.path, targetDepth);
+                // Use path-based depth (rect.left is identical for all rows since they
+                // are full-width blocks with padding-only indentation)
+                const hoveredDepth = item.path.split('/').length - 1;
+                const cursorDepth = Math.max(-1, Math.floor((relativeX - 8) / 16));
+                if (cursorDepth < hoveredDepth - 1) {
+                    // Cursor is far left — intent is to target an ancestor-level drop
+                    const effectiveDepth = Math.max(0, cursorDepth);
+                    const parentPath = effectiveDepth === 0
+                        ? '' : this.getParentFolderAtDepth(item.path, effectiveDepth - 1);
+                    this._updateDragHintForTarget(parentPath);
                     this.showParentFolderDropZone(parentPath);
                     return;
                 } else {
                     this.clearParentFolderHighlight();
                 }
                 const relativeY = event.clientY - rect.top;
-                if (item instanceof TFolder) {
+                // Suppress folder center "drop into" zone when the dragged item is
+                // already a direct child of this folder (it would be a no-op and hides
+                // the more useful reorder zones above/below)
+                const isChildOfHovered = (item instanceof TFolder) && paths.some(p => {
+                    const slash = p.lastIndexOf('/');
+                    return slash > -1 && p.substring(0, slash) === item.path;
+                });
+                if (item instanceof TFolder && !isChildOfHovered) {
                     const centerThreshold = rect.height * 0.3;
                     if (relativeY > centerThreshold && relativeY < (rect.height - centerThreshold)) {
                         this.clearDropIndicators();
+                        this.updateDragPreviewTarget(item.name);
                         element.addClass('sfe-is-drag-over-folder');
                         return;
                     } else {
                         element.removeClass('sfe-is-drag-over-folder');
                     }
+                } else if (item instanceof TFolder) {
+                    element.removeClass('sfe-is-drag-over-folder');
                 }
+                const _reorderParent = item.path.lastIndexOf('/') > -1 ? item.path.substring(0, item.path.lastIndexOf('/')) : '';
+                this._updateDragHintForTarget(_reorderParent);
                 const isUpperHalf = relativeY < rect.height / 2;
                 let targetElement, targetItemPath;
                 if (isUpperHalf) {
@@ -2314,6 +2437,7 @@ class CustomSortableFileExplorerView extends ItemView {
             this.cancelDragOverThrottle();
             this.clearDropIndicators();
             this.clearParentFolderHighlight();
+            this.clearDragPreviewTarget();
 
             // Finder/native file drop support
             if (event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files.length > 0) {
@@ -2349,21 +2473,52 @@ class CustomSortableFileExplorerView extends ItemView {
                 const rect = element.getBoundingClientRect();
                 const containerRect = this.contentEl.getBoundingClientRect();
                 const relativeX = event.clientX - containerRect.left;
-                const currentDepth = Math.floor((rect.left - containerRect.left - 8) / 16);
-                const targetDepth = Math.floor((relativeX - 8) / 16);
+                const hoveredDepth = item.path.split('/').length - 1;
+                const cursorDepth = Math.max(-1, Math.floor((relativeX - 8) / 16));
 
                 // Use the primary dragged path when single-item logic is needed
                 const sourcePath = paths[0];
 
-                if (targetDepth < currentDepth - 1 && relativeX < rect.left - containerRect.left - 20) {
-                    // pass the computed numeric targetDepth rather than the target path
-                    const parentPath = this.getParentFolderAtDepth(sourcePath, targetDepth);
-                    await this.moveToParentFolder(sourcePath, parentPath);
+                if (cursorDepth < hoveredDepth - 1) {
+                    // Far-left drop: reparent to ancestor AND reorder at that level
+                    const effectiveDepth = Math.max(0, cursorDepth);
+                    const ancestorParent = effectiveDepth === 0
+                        ? '' : this.getParentFolderAtDepth(item.path, effectiveDepth - 1);
+                    const anchorAtLevel = this.getParentFolderAtDepth(item.path, effectiveDepth);
+                    const relativeY = event.clientY - rect.top;
+                    const insertBefore = relativeY < rect.height / 2;
+                    const getParentPath = (path) => path.lastIndexOf('/') > -1 ? path.substring(0, path.lastIndexOf('/')) : '';
+                    const movedPaths = [];
+                    for (const p of paths) {
+                        const isFolder = this.app.vault.getAbstractFileByPath(p) instanceof TFolder;
+                        if (isFolder && ancestorParent && (ancestorParent === p || ancestorParent.startsWith(p + '/'))) {
+                            new Notice('Cannot move folder into itself or its children');
+                            continue;
+                        }
+                        const name = p.substring(p.lastIndexOf('/') + 1);
+                        if (getParentPath(p) !== ancestorParent) {
+                            if (isFolder) await this.moveFolderToFolder(p, ancestorParent);
+                            else await this.moveFileToFolder(p, ancestorParent);
+                            movedPaths.push(ancestorParent ? `${ancestorParent}/${name}` : name);
+                        } else {
+                            movedPaths.push(p);
+                        }
+                    }
+                    let anchor = anchorAtLevel;
+                    for (const p of movedPaths) {
+                        await this.reorderItems(p, anchor, insertBefore);
+                        if (!insertBefore) anchor = p;
+                    }
                     return;
                 }
 
                 const relativeY = event.clientY - rect.top;
-                if (item instanceof TFolder) {
+                // Suppress folder center zone when dragging child over its direct parent
+                const isChildOfHovered = (item instanceof TFolder) && paths.some(p => {
+                    const slash = p.lastIndexOf('/');
+                    return slash > -1 && p.substring(0, slash) === item.path;
+                });
+                if (item instanceof TFolder && !isChildOfHovered) {
                     const centerThreshold = rect.height * 0.3;
                     if (relativeY > centerThreshold && relativeY < (rect.height - centerThreshold)) {
                         // Drop onto the folder's center: move all dragged items into this folder
@@ -2443,8 +2598,12 @@ class CustomSortableFileExplorerView extends ItemView {
         const rect = targetElement.getBoundingClientRect();
         const containerRect = container.getBoundingClientRect();
         const top = Math.round(rect.top - containerRect.top + container.scrollTop + (isUpperHalf ? 0 : rect.height));
+        // Align left edge with the target item's indent so cross-depth drops
+        // visually hint at the insertion level
+        const indent = parseInt(targetElement.style.getPropertyValue('--sfe-indent')) || 10;
         indicator.style.setProperty('--sfe-drop-top', `${top}px`);
-        indicator.style.setProperty('--sfe-drop-width', `${Math.round(containerRect.width - 20)}px`);
+        indicator.style.setProperty('--sfe-drop-left', `${indent}px`);
+        indicator.style.setProperty('--sfe-drop-width', `${Math.round(containerRect.width - indent - 10)}px`);
         // Persist metadata so we can interpret indicator drop even if pointer is between items
         indicator.dataset.targetPath = targetElement.getAttribute('data-path');
         indicator.dataset.insertBefore = isUpperHalf ? 'true' : 'false';

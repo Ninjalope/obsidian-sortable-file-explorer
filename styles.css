@@ -270,8 +270,79 @@
 }
 
 /* Drag and drop feedback */
-.sfe .sfe-is-dragging {
+.sfe .sfe-is-being-dragged {
     opacity: 0.5;
+}
+
+.sfe-drag-preview {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    transform: translate(-9999px, -9999px) !important;
+    transition: none !important;
+    animation: none !important;
+    margin: 0 !important;
+    padding: 4px 0 0 6px !important;
+    pointer-events: none !important;
+    z-index: 10000 !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+.sfe-drag-preview-card {
+    display: inline-flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    width: max-content !important;
+    max-width: min(360px, calc(100vw - 48px)) !important;
+    padding: 8px 12px !important;
+    border-radius: 6px !important;
+    background: #121418 !important;
+    color: #f5f6f7 !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    transition: none !important;
+}
+
+.sfe-drag-preview-title {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    min-width: 0 !important;
+}
+
+.sfe-drag-preview-icon {
+    width: 14px !important;
+    height: 14px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    color: #d7dbe0 !important;
+    flex: 0 0 auto !important;
+}
+
+.sfe-drag-preview-label {
+    color: #f5f6f7 !important;
+    font-size: var(--font-ui-small) !important;
+    line-height: 1.2 !important;
+    white-space: nowrap !important;
+    max-width: min(320px, calc(100vw - 96px)) !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+
+.sfe-drag-preview-hint {
+    display: none !important;
+    margin-top: 4px !important;
+    margin-left: 22px !important;
+    color: rgba(245, 246, 247, 0.72) !important;
+    font-size: var(--font-ui-smaller, 12px) !important;
+    line-height: 1.2 !important;
+    white-space: nowrap !important;
+}
+
+.sfe-drag-preview.sfe-drag-preview-has-target .sfe-drag-preview-hint {
+    display: block !important;
 }
 
 /* Folder drop target highlighting */
@@ -314,7 +385,7 @@
 .sfe .sfe-drop-indicator {
     position: absolute !important;
     top: var(--sfe-drop-top, 0px) !important;
-    left: 10px !important;
+    left: var(--sfe-drop-left, 10px) !important;
     width: var(--sfe-drop-width, 0px) !important;
     height: 2px !important;
     background: var(--interactive-accent) !important;

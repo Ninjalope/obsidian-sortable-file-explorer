@@ -54,40 +54,6 @@ class CustomSortableFileExplorerView extends ItemView {
         } catch (_) {}
     }
 
-    // Prefer the native move dialog when the core file explorer is available.
-    openNativeMoveDialogForSelection() {
-        const leaves = this.app.workspace.getLeavesOfType('file-explorer');
-        const fileExplorerLeaf = leaves && leaves.length ? leaves[0] : null;
-        if (!fileExplorerLeaf) {
-            return false;
-        }
-
-        // Attempt to apply CSS selection to matching items in core explorer DOM so menu reflects count
-        try {
-            const container = fileExplorerLeaf.view?.containerEl;
-            if (container) {
-                // Clear existing core selection
-                container.querySelectorAll('.nav-file-title.is-selected, .nav-folder-title.is-selected')
-                    .forEach(el => el.classList.remove('is-selected'));
-                // Apply selection to each corresponding DOM node
-                for (const p of this.selectedPaths) {
-                    const sel = container.querySelector(`.nav-file-title[data-path="${CSS.escape(p)}"], .nav-folder-title[data-path="${CSS.escape(p)}"]`);
-                    if (sel) sel.classList.add('is-selected');
-                }
-            }
-        } catch (_) {}
-
-        // Focus file explorer and invoke its move command which opens the default dialog
-        this.app.workspace.activeLeaf = fileExplorerLeaf;
-        const cmdId = 'file-explorer:move-file';
-        if (this.app.commands?.commands?.[cmdId]) {
-            this.app.commands.executeCommandById(cmdId);
-            return true;
-        } else {
-            return false;
-        }
-    }
-
     // Utility: return array of visible item elements in current order
     getVisibleItemElements() {
         if (!this.contentEl) return [];
@@ -925,6 +891,12 @@ class CustomSortableFileExplorerView extends ItemView {
     confirmAction({ title = 'Confirm', message, confirmLabel = 'OK' } = {}) {
         return new Promise((resolve) => {
             const modal = new Modal(this.app);
+            let settled = false;
+            const resolveOnce = (value) => {
+                if (settled) return;
+                settled = true;
+                resolve(value);
+            };
             try { modal.titleEl.setText(title); } catch (_) {}
             const content = modal.contentEl.createDiv();
             content.createEl('p', { text: message || '' });
@@ -932,9 +904,15 @@ class CustomSortableFileExplorerView extends ItemView {
             const cancelBtn = buttons.createEl('button', { text: 'Cancel' });
             const okBtn = buttons.createEl('button', { text: confirmLabel });
             okBtn.addClass('mod-warning');
-            cancelBtn.addEventListener('click', () => { modal.close(); resolve(false); });
-            okBtn.addEventListener('click', () => { modal.close(); resolve(true); });
-            modal.onClose = () => resolve(false);
+            cancelBtn.addEventListener('click', () => {
+                resolveOnce(false);
+                modal.close();
+            });
+            okBtn.addEventListener('click', () => {
+                resolveOnce(true);
+                modal.close();
+            });
+            modal.onClose = () => resolveOnce(false);
             modal.open();
         });
     }
@@ -2070,92 +2048,170 @@ class CustomSortableFileExplorerView extends ItemView {
         } catch (_) {}
     }
 
+    normalizeSelectedItems(itemsOrPaths) {
+        const liveByPath = new Map();
+        for (const entry of (itemsOrPaths || [])) {
+            const path = typeof entry === 'string' ? entry : entry?.path;
+            if (!path && path !== '') continue;
+            const live = this.app.vault.getAbstractFileByPath(path);
+            if (live) liveByPath.set(live.path, live);
+        }
+
+        const selectedPaths = Array.from(liveByPath.keys());
+        const selectedSet = new Set(selectedPaths);
+        const hasSelectedAncestor = (path) => {
+            let parentPath = this.getParentPath(path);
+            while (parentPath || parentPath === '') {
+                if (selectedSet.has(parentPath)) return true;
+                if (!parentPath) break;
+                parentPath = this.getParentPath(parentPath);
+            }
+            return false;
+        };
+
+        return selectedPaths
+            .filter(path => !hasSelectedAncestor(path))
+            .sort((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b))
+            .map(path => liveByPath.get(path))
+            .filter(Boolean);
+    }
+
+    getAllFolders() {
+        return this.app.vault.getAllFolders(true);
+    }
+
+    openFolderPicker({ placeholder = 'Select folder', onChoose }) {
+        const { FuzzySuggestModal } = require('obsidian');
+
+        class FolderSuggestModal extends FuzzySuggestModal {
+            constructor(app, folders) {
+                super(app);
+                this.folders = folders;
+                this.setPlaceholder(placeholder);
+            }
+
+            getItems() {
+                return this.folders;
+            }
+
+            getItemText(folder) {
+                return folder.path || '/';
+            }
+
+            onChooseItem(folder) {
+                Promise.resolve(onChoose?.(folder)).catch((err) => {
+                    console.error('Folder picker selection failed', err);
+                    new Notice('Folder selection failed');
+                });
+            }
+        }
+
+        new FolderSuggestModal(this.app, this.getAllFolders()).open();
+    }
+
+    async finishCreateFolderWithSelection(items, parentFolder) {
+        if (!(parentFolder instanceof TFolder)) return;
+
+        const baseName = await this.promptForText({
+            title: 'New folder name',
+            placeholder: 'New Folder',
+            initialValue: 'New Folder'
+        });
+        if (!baseName) return;
+
+        let newName = baseName.trim() || 'New Folder';
+        let destPath = parentFolder.isRoot() ? newName : `${parentFolder.path}/${newName}`;
+        let counter = 1;
+        while (this.app.vault.getAbstractFileByPath(destPath)) {
+            counter++;
+            const suffix = ` ${counter}`;
+            const base = baseName.trim() || 'New Folder';
+            newName = base.endsWith(String(counter - 1)) ? base.replace(/\s\d+$/, suffix) : `${base}${suffix}`;
+            destPath = parentFolder.isRoot() ? newName : `${parentFolder.path}/${newName}`;
+        }
+
+        await this.app.vault.createFolder(destPath);
+
+        for (const item of items) {
+            try {
+                const targetPath = `${destPath}/${item.name}`;
+                if (this.app.vault.getAbstractFileByPath(targetPath)) {
+                    new Notice(`"${item.name}" already exists in "${newName}"`);
+                    continue;
+                }
+                if (item instanceof TFolder && destPath.startsWith(item.path + '/')) {
+                    new Notice(`Cannot move folder "${item.name}" into itself`);
+                    continue;
+                }
+                await this.app.fileManager.renameFile(item, targetPath);
+            } catch (err) {
+                console.error('Move into new folder failed', err);
+                new Notice(`Failed to move "${item.name}"`);
+            }
+        }
+
+        this.selectedPaths.clear();
+        this.selectedPaths.add(destPath);
+        this.updateSelectionStyles();
+        new Notice(`Created "${newName}" and moved ${items.length} item${items.length > 1 ? 's' : ''}.`);
+    }
+
+    async moveItemsToFolder(items, folder) {
+        if (!(folder instanceof TFolder)) return;
+
+        const targetPath = folder.path;
+        let movedCount = 0;
+
+        for (const item of items) {
+            try {
+                if (item instanceof TFolder && targetPath &&
+                    (targetPath === item.path || targetPath.startsWith(item.path + '/'))) {
+                    new Notice(`Cannot move "${item.name}" into itself`);
+                    continue;
+                }
+
+                const newPath = targetPath ? `${targetPath}/${item.name}` : item.name;
+                const existing = this.app.vault.getAbstractFileByPath(newPath);
+                if (existing && existing.path !== item.path) {
+                    new Notice(`"${item.name}" already exists at destination`);
+                    continue;
+                }
+
+                if (item.path !== newPath) {
+                    await this.app.fileManager.renameFile(item, newPath);
+                    movedCount++;
+                }
+            } catch (err) {
+                console.error('Move error:', err);
+                new Notice(`Failed to move "${item.name}"`);
+            }
+        }
+
+        if (movedCount > 0) {
+            new Notice(`Moved ${movedCount} item${movedCount > 1 ? 's' : ''}`);
+        }
+    }
+
     // Create a new folder and move currently-selected items (files/folders) into it
     async createFolderWithSelection(items) {
         try {
-            const { FuzzySuggestModal } = require('obsidian');
-
-            const validItems = (items || []).filter(Boolean);
+            const validItems = this.normalizeSelectedItems(items);
             if (validItems.length === 0) return;
 
             // Determine target parent folder: if all items share the same parent, use it; otherwise ask
             const parents = Array.from(new Set(validItems.map(it => it.parent?.path || '')));
-            let parentFolderPath = null;
             if (parents.length === 1) {
-                parentFolderPath = parents[0];
-            } else {
-                // Ask user to pick a folder
-                const pick = await new Promise((resolve) => {
-                    class FolderPick extends FuzzySuggestModal {
-                        constructor(app) { super(app); }
-                        getItems() {
-                            const out = [];
-                            const add = (folder) => { out.push(folder); (folder.children||[]).forEach(ch => { if (ch instanceof TFolder) add(ch); }); };
-                            add(this.app.vault.getRoot());
-                            return out;
-                        }
-                        getItemText(f) { return f.path || '/'; }
-                        onChooseItem(f) { resolve(f.path); }
-                        onClose() { resolve(null); }
-                    }
-                    new FolderPick(this.app).open();
-                });
-                if (!pick && pick !== '') return; // cancelled
-                parentFolderPath = pick;
+                const parentFolder = this.app.vault.getFolderByPath(parents[0]) || this.app.vault.getRoot();
+                await this.finishCreateFolderWithSelection(validItems, parentFolder);
+                return;
             }
 
-            const parentFolder = this.app.vault.getAbstractFileByPath(parentFolderPath) || this.app.vault.getRoot();
-            if (!(parentFolder instanceof TFolder)) return;
-
-            // Ask for folder name
-            const baseName = await this.promptForText({
-                title: 'New folder name',
-                placeholder: 'New Folder',
-                initialValue: 'New Folder'
-            });
-            if (!baseName) return; // cancelled
-
-            // Ensure unique name
-            let newName = baseName.trim() || 'New Folder';
-            let destPath = parentFolder.path ? `${parentFolder.path}/${newName}` : newName;
-            let counter = 1;
-            while (this.app.vault.getAbstractFileByPath(destPath)) {
-                counter++;
-                const suffix = ` ${counter}`;
-                const base = baseName.trim() || 'New Folder';
-                newName = base.endsWith(String(counter - 1)) ? base.replace(/\s\d+$/, suffix) : `${base}${suffix}`;
-                destPath = parentFolder.path ? `${parentFolder.path}/${newName}` : newName;
-            }
-
-            await this.app.vault.createFolder(destPath);
-
-            // Move items into the new folder
-            for (const it of validItems) {
-                try {
-                    const targetPath = `${destPath}/${it.name}`;
-                    if (this.app.vault.getAbstractFileByPath(targetPath)) {
-                        new Notice(`"${it.name}" already exists in "${newName}"`);
-                        continue;
-                    }
-                    if (it instanceof TFolder) {
-                        // Prevent moving folder into itself or its children (if parent chosen equals the folder itself)
-                        if (destPath.startsWith(it.path + '/')) {
-                            new Notice(`Cannot move folder "${it.name}" into itself`);
-                            continue;
-                        }
-                    }
-                    await this.app.fileManager.renameFile(it, targetPath);
-                } catch (e) {
-                    console.error('Move into new folder failed', e);
-                    new Notice(`Failed to move "${it.name}"`);
+            this.openFolderPicker({
+                placeholder: 'Create new folder in...',
+                onChoose: async (folder) => {
+                    await this.finishCreateFolderWithSelection(validItems, folder);
                 }
-            }
-
-            // Update selection to the new folder (optional UX)
-            this.selectedPaths.clear();
-            this.selectedPaths.add(destPath);
-            this.updateSelectionStyles();
-            new Notice(`Created "${newName}" and moved ${validItems.length} item${validItems.length>1?'s':''}.`);
+            });
         } catch (err) {
             console.error('createFolderWithSelectedFiles error', err);
             new Notice('Failed to create folder with selection');
@@ -2185,6 +2241,12 @@ class CustomSortableFileExplorerView extends ItemView {
     promptForText({ title = 'Input', placeholder = '', initialValue = '' } = {}) {
         return new Promise((resolve) => {
             const modal = new Modal(this.app);
+            let settled = false;
+            const resolveOnce = (value) => {
+                if (settled) return;
+                settled = true;
+                resolve(value);
+            };
             try { modal.titleEl.setText(title); } catch (_) {}
             const content = modal.contentEl.createDiv();
             const input = content.createEl('input', { type: 'text' });
@@ -2194,7 +2256,10 @@ class CustomSortableFileExplorerView extends ItemView {
             const cancelBtn = buttons.createEl('button', { text: 'Cancel' });
             const okBtn = buttons.createEl('button', { text: 'OK' });
             okBtn.addClass('mod-cta');
-            const done = (val) => { modal.close(); resolve(val); };
+            const done = (val) => {
+                resolveOnce(val);
+                modal.close();
+            };
             cancelBtn.addEventListener('click', () => done(null));
             okBtn.addEventListener('click', () => done(input.value));
             input.addEventListener('keydown', (e) => {
@@ -2202,7 +2267,7 @@ class CustomSortableFileExplorerView extends ItemView {
                 else if (e.key === 'Escape') { e.preventDefault(); done(null); }
             });
             modal.onOpen = () => { window.setTimeout(() => { input.focus(); input.select(); }, 0); };
-            modal.onClose = () => resolve(null);
+            modal.onClose = () => resolveOnce(null);
             modal.open();
         });
     }
@@ -2651,82 +2716,18 @@ class CustomSortableFileExplorerView extends ItemView {
 
     // Open a folder suggester modal and move all selected files
     async openMoveModalForSelection() {
-        if (this.openNativeMoveDialogForSelection()) {
-            return;
-        }
-
-        const { FuzzySuggestModal } = require('obsidian');
-        
-        const selected = Array.from(this.selectedPaths).filter(p => !!this.app.vault.getAbstractFileByPath(p));
-        if (selected.length === 0) {
+        const items = this.normalizeSelectedItems(Array.from(this.selectedPaths));
+        if (items.length === 0) {
             new Notice('No files selected');
             return;
         }
 
-        const files = selected
-            .map(p => this.app.vault.getAbstractFileByPath(p))
-            .filter(Boolean);
-
-        class FolderSuggest extends FuzzySuggestModal {
-            constructor(app, files) {
-                super(app);
-                this.files = files;
-                this.setPlaceholder(`Move ${files.length} item${files.length > 1 ? 's' : ''} to...`);
+        this.openFolderPicker({
+            placeholder: `Move ${items.length} item${items.length > 1 ? 's' : ''} to...`,
+            onChoose: async (folder) => {
+                await this.moveItemsToFolder(items, folder);
             }
-
-            getItems() {
-                const folders = [];
-                const addFolder = (folder) => {
-                    folders.push(folder);
-                    if (folder.children) {
-                        folder.children.forEach(child => {
-                            if (child instanceof TFolder) addFolder(child);
-                        });
-                    }
-                };
-                addFolder(this.app.vault.getRoot());
-                return folders;
-            }
-
-            getItemText(folder) {
-                return folder.path || '/';
-            }
-
-            async onChooseItem(folder) {
-                const targetPath = folder.path;
-                
-                for (const file of this.files) {
-                    try {
-                        // Check if moving a folder into itself
-                        if (file instanceof TFolder && targetPath && 
-                            (targetPath === file.path || targetPath.startsWith(file.path + '/'))) {
-                            new Notice(`Cannot move "${file.name}" into itself`);
-                            continue;
-                        }
-
-                        // Check if file already exists at destination
-                        const newPath = targetPath ? `${targetPath}/${file.name}` : file.name;
-                        const existing = this.app.vault.getAbstractFileByPath(newPath);
-                        if (existing && existing.path !== file.path) {
-                            new Notice(`"${file.name}" already exists at destination`);
-                            continue;
-                        }
-
-                        // Perform the move
-                        if (file.path !== newPath) {
-                            await this.app.fileManager.renameFile(file, newPath);
-                        }
-                    } catch (err) {
-                        new Notice(`Failed to move "${file.name}"`);
-                        console.error('Move error:', err);
-                    }
-                }
-
-                new Notice(`Moved ${this.files.length} item${this.files.length > 1 ? 's' : ''}`);
-            }
-        }
-
-        new FolderSuggest(this.app, files).open();
+        });
     }
 
 

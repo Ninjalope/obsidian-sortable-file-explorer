@@ -18,6 +18,8 @@ An alternative file explorer for Obsidian with drag & drop reordering for custom
 - **Keyboard-friendly**: Navigation and shortcuts aligned with common file manager conventions.
 - **Mobile stance**: Mobile reflects desktop-defined ordering even though drag-and-drop is primarily desktop-oriented.
 - **Context-menu compatibility**: Designed to work alongside other plugins that add file-explorer context menu items.
+![drag to folder](https://github.com/user-attachments/assets/232441b8-2913-41b0-bee0-bbe9c42db995)
+
 
 ## Features
 
@@ -27,18 +29,29 @@ An alternative file explorer for Obsidian with drag & drop reordering for custom
 - **Multi-Selection**: Use Shift-click for range selection or Ctrl/Cmd-click for individual items
 - **Intelligent Drag & Drop**: Visual indicators show exactly where items will be placed
 - **Inline Renaming**: Rename files and folders directly in the explorer
+ ![multi select move](https://github.com/user-attachments/assets/32c7fc18-1d05-47af-abb8-f89144cd9346)
+![drag to pos in folder](https://github.com/user-attachments/assets/dbc9a8b2-f47f-446b-b33c-879dbba9d299)
+
+
 
 ### Advanced Features
 - **Batch Operations**: Move, duplicate, or delete multiple files at once
 - **Smart Drop Zones**: Drop onto folder centers to move items inside, or between items to reorder
 - **External File Import**: Drag files from your operating system directly into Obsidian
-- **Accurate Drop Highlighting**: When dragging from Finder/Explorer, only the specific folder that will receive the drop is highlighted (or the root if over whitespace/left gutter).
+![drag to folder](https://github.com/user-attachments/assets/f225b8c1-813d-4295-b689-850255a1ec88)
+![Reordering folders](https://github.com/user-attachments/assets/9accc70d-839d-4078-8b6e-6622905bbd54)
+
+
 
 ### User Experience
 - **Context Menus**: Right-click for file and folder operations
 - **Keyboard Friendly**: Supports standard selection patterns and navigation
 - **Visual Feedback**: Clear indicators for drag operations and selections
 - **Stable Performance**: Optimized for large vaults with throttled operations
+![context menus](https://github.com/user-attachments/assets/7a122f72-601f-4ece-bffe-ee94acfc8c6a)
+<img width="812" height="587" alt="Screenshot 2026-04-03 at 9 39 02 PM" src="https://github.com/user-attachments/assets/a112a7a7-36e2-44e5-9c1b-38f63c9dd075" />
+
+
 
 ## Installation
 
@@ -62,6 +75,7 @@ An alternative file explorer for Obsidian with drag & drop reordering for custom
 1. **Open the View**: Click the folder icon in the ribbon or use "View → Sortable File Explorer"
 2. **Basic Navigation**: Single-click files to open them, folders to expand/collapse
 3. **Multi-Select**: Hold Shift for range selection. Cmd/Ctrl-click behavior is configurable (new tab vs. multi-select).
+
 
 ### File Operations
 - **Rename**: Right-click → "Rename..." or use the rename command
